@@ -98,12 +98,17 @@ test('unreadable schema is explicit and cannot expose unrelated aggregate metric
 test('statusbar updates as soon as the asynchronous request snapshot arrives', async t => {
   const f = fixture(t);
   f.message('a', { message_id: 'response' }); f.monitor.record(record('response'));
+  const snapshot = publicSnapshot(await f.monitor.snapshot());
   const item = { show() {}, hide() {}, dispose() {} };
-  let reads = 0;
+  let reads = 0, resolveRead;
+  const deferred = new Promise(resolve => { resolveRead = resolve; });
   const ui = createContextUi({ vscode: { window: { createStatusBarItem: () => item }, commands: { registerCommand: () => ({ dispose() {} }) } },
     context: { subscriptions: [] }, snapshot: () => [{ sessionId: 'a', subagents: [] }], catalog: () => ({}),
-    readMonitor: async () => { reads++; return { snapshot: publicSnapshot(await f.monitor.snapshot()) }; } });
+    readMonitor: () => { reads++; return deferred; } });
   t.after(() => ui.dispose());
-  for (let i = 0; i < 100 && !item.tooltip.includes('synthetic-model'); i++) await new Promise(resolve => setTimeout(resolve, 20));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.doesNotMatch(item.tooltip, /synthetic-model/);
+  resolveRead({ snapshot });
+  await new Promise(resolve => setImmediate(resolve));
   assert.match(item.tooltip, /最近请求：synthetic-model · 成功/); assert.equal(reads, 1);
 });
