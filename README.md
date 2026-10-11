@@ -1,10 +1,24 @@
-# Devin Fusion BYOK（Saito Fork）
+# Devin Fusion BYOK — Windows 适配 Fork（Saito）
+
+**这是面向 Windows Devin Local 的适配与维护分支。** 重点修复 Windows 下的运行路径、上下文统计、PowerShell Goal 报告和 VSIX 打包，并持续维护 BYOK 接口兼容性。主要开发与实际 Devin 验收环境是 Windows。
 
 基于 [kuobibulaien/devin-fusion-byok](https://github.com/kuobibulaien/devin-fusion-byok) 的 `v0.3.42`，当前版本 **0.3.45**。本 Fork 独立维护，保留原项目与第三方组件的 MIT 许可证及版权声明；更新检查使用 [本仓库 Releases](https://github.com/Saito-Sakuya/devin-fusion-byok/releases)。
 
 把自己的模型 API 接入 Devin Local 的原生模型列表，支持 OpenAI Responses、Chat Completions 和 Anthropic Messages。可以单独选择第三方模型，也可以保存 Lead + Sidekick 的 Fusion 预设。需要正常登录的 Devin 账号及其已有权限。
 
 本 Fork 的改进包括 OpenAI Fast 服务等级、Anthropic 地址与导入、工具可选参数、Responses 推理状态与缓存标识、后台代理与有限重试，以及 Windows 上下文请求统计和 Goal 报告提交。
+
+## Windows 适配重点
+
+| 适配项 | 本分支的处理 |
+| --- | --- |
+| 会话数据库路径 | 使用 Windows 的 `%APPDATA%\Devin\cli\sessions.db`，恢复“最近请求”等指标的会话归属 |
+| SQLite 读取 | 使用 Devin 内置 Node.js 的 SQLite，Worker 中只读查询，支持新版消息表内的工具标识 |
+| Goal 报告命令 | 生成 PowerShell 5/7 可执行命令，支持中文、空格和单引号路径；UTF-8 JSON 编码与退出状态经过实测 |
+| Windows VSIX 打包 | 使用 PowerShell Compress-Archive，支持临时目录与仓库位于不同磁盘；CI 验证测试和打包 |
+| 独立后台的网络代理 | 读取 Devin 的代理配置，使后台请求使用已配置的代理；保留有界重试与取消行为 |
+
+Linux 保留自动化测试与打包兼容性；macOS 保留已有代码路径，其应用重启、一键更新等平台操作需在 macOS 上验收。Windows 的真实验证范围详见下方表格；后续维护以 Windows 使用问题为重点。
 
 ## 安装与升级
 
