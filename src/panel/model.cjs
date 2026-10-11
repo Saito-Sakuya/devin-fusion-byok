@@ -11,10 +11,10 @@ function text(value, label, maximum = 256) {
   if (typeof value !== 'string' || !value.trim() || value.length > maximum || /[\u0000-\u001f]/.test(value)) fail(label + '无效。');
   return value.trim();
 }
-function baseUrl(value) {
+function baseUrl(value, apiFormat) {
   let url; try { url = new URL(text(value, 'API 地址', 2048)); } catch { fail('请填写完整的 http:// 或 https:// API 地址。'); }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) fail('API 地址不能包含登录信息、查询参数或片段。');
-  url.pathname = normalizeBaseUrlPath(url.pathname);
+  url.pathname = normalizeBaseUrlPath(url.pathname, apiFormat);
   return url.toString().replace(/\/$/, '');
 }
 function boolean(value, label) { if (typeof value !== 'boolean') fail(label + '无效。'); return value; }
@@ -82,7 +82,7 @@ function publicState(config, selectedFusionUid, nativeModels = [], autoContinueS
     modelCount: Object.keys(catalog.routes).length,
     fusionCount: Object.keys(catalog.fusions).length,
     fusionChoices: Object.values(catalog.fusions).map(fusion => ({ uid: fusion.uid, label: fusion.label })),
-    autoContinueOnProviderError: config.autoContinueOnProviderError === true,
+    autoContinueOnProviderError: (config.autoRetryProviderRequests ?? config.autoContinueOnProviderError) === true,
     autoContinueUntilPlanComplete: config.autoContinueUntilPlanComplete === true,
     autoContinueStatus: typeof autoContinueStatus === 'string' ? autoContinueStatus : 'unavailable',
   };
@@ -143,7 +143,7 @@ function createManager({ read, write, discover = discoverModels, afterChange = a
       }
       case 'saveProvider': {
         const existing = payload.id ? providerAt(config, payload.id) : null;
-        const name = text(payload.name, '供应商名称', 80), url = baseUrl(payload.baseUrl);
+        const name = text(payload.name, '供应商名称', 80), url = baseUrl(payload.baseUrl, payload.apiFormat);
         if (!['openai-responses', 'openai', 'anthropic'].includes(payload.apiFormat)) fail('请选择 API 类型。');
         if (own(payload, 'apiKey') && (typeof payload.apiKey !== 'string' || payload.apiKey.length > 8192 || /[\r\n]/.test(payload.apiKey))) fail('API Key 无效。');
         const apiKey = payload.apiKey?.trim() || existing?.apiKey || '';
@@ -267,7 +267,11 @@ function createManager({ read, write, discover = discoverModels, afterChange = a
         break;
       }
       case 'setEnabled': config.enabled = boolean(payload.enabled, '启用状态'); break;
-      case 'setAutoContinue': config.autoContinueOnProviderError = boolean(payload.enabled, '自动继续'); break;
+      case 'setAutoContinue':
+        config.autoRetryProviderRequests = boolean(payload.enabled, '自动重试');
+        // Also retire the flag used by an already loaded older ACP observer.
+        config.autoContinueOnProviderError = false;
+        break;
       case 'setAutoContinueUntilPlanComplete': config.autoContinueUntilPlanComplete = boolean(payload.enabled, '完成待办时自动继续'); break;
       default: fail('不支持的操作。');
     }

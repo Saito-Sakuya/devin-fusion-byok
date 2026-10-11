@@ -16,8 +16,8 @@ test('diagnostics are private, isolated, bounded snapshots without session paylo
     assert.equal(data.connections, 1); assert.equal(data.leadSessions, 1); assert.equal(data.subagentUsages, 1);
     assert.equal(data.sessionUpdates, null); assert.ok(!raw.includes('never-persist')); assert.ok(!raw.includes('"used":'));
     assert.deepEqual(data.usageRejections, { 'invalid-session-id': null, 'invalid-used': 1, 'invalid-size': null, 'invalid-parent-id': null, 'invalid-run-id': null });
-    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
-    assert.equal(fs.statSync(path.dirname(file)).mode & 0o777, 0o700);
+    if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') assert.equal(fs.statSync(path.dirname(file)).mode & 0o777, 0o700);
     first.refresh(); assert.equal(fs.readdirSync(path.dirname(file)).length, 2);
     first.dispose(); assert.equal(JSON.parse(fs.readFileSync(file)).state, 'disposed');
     assert.equal(JSON.parse(fs.readFileSync(path.join(path.dirname(file), '456.json'))).state, 'observing');

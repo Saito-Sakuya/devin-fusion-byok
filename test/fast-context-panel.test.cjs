@@ -21,7 +21,7 @@ test('the control panel has a Fast Context tab with copy buttons', () => {
 });
 
 test('setup prompt carries exact config, harness recipes and verification without secrets', () => {
-  const config = mcpConfig({ extensionPath: "/ext/it's", root: '/项目/app', node: '/usr/bin/node' }).mcpServers['fusion-fast-context'];
+  const config = { command: '/usr/bin/node', args: ["/ext/it's/src/fast-context/server.cjs", '--root', '/项目/app'] };
   const prompt = setupPrompt({ ...config, platform: 'darwin' });
   assert.ok(prompt.includes(JSON.stringify(config.args)));
   assert.ok(prompt.includes(`claude mcp add fusion-fast-context --scope user -- '/usr/bin/node' '/ext/it'\\''s/src/fast-context/server.cjs' '--root' '/项目/app'`));
@@ -41,7 +41,7 @@ test('host copies prompt or config only for allowed, existing roots', async () =
   await host.copy('prompt', root);
   assert.match(copied[0], /fusion-fast-context/);
   await host.copy('config', root);
-  assert.deepEqual(JSON.parse(copied[1]).mcpServers['fusion-fast-context'].args, ['/ext/src/fast-context/server.cjs', '--root', root]);
+  assert.deepEqual(JSON.parse(copied[1]).mcpServers['fusion-fast-context'].args, [path.join('/ext', 'src/fast-context/server.cjs'), '--root', root]);
   await assert.rejects(host.copy('prompt', other), /fast_context_root_not_allowed/);
   assert.equal(await host.pick(), other);
   await host.copy('prompt', other);

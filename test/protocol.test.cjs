@@ -354,7 +354,7 @@ test('provider idle timeout outputs code 13 and target text, cancel does not ret
     res.on('close', () => clearTimeout(timer));
   }, 'openai-responses', { idleMs: 50, firstResponseMs: 500 });
   const result = unpack(Buffer.from(await (await fetch(app.url)).arrayBuffer()));
-  assert.equal(result.messages.map(message => str(message, 3)).join(''), 'First chunkProvider response could not be completed.');
+  assert.equal(result.messages.map(message => str(message, 3)).join(''), 'First chunkProvider response timed out while waiting for more data.');
   assert.equal(num(result.messages.at(-1), 5), 13);
   assert.ok(app.logs.some(l => l.event === 'chat-error' && l.code === 'upstream_timeout'));
 });
@@ -387,14 +387,14 @@ test('raw heartbeat keeps stream alive past idle timeout until completion', asyn
   assert.ok(app.logs.some(l => l.event === 'chat-complete' && l.requestId));
 });
 
-test('response.failed outputs generic target phrase and classified stream error', async t => {
+test('response.failed outputs a safe provider failure phrase and classified stream error', async t => {
   const app = await bridge(t, async (req, res) => {
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     res.write(event({ type: 'response.failed', error: { message: 'internal server error' } }));
     res.end();
   }, 'openai-responses');
   const result = unpack(Buffer.from(await (await fetch(app.url)).arrayBuffer()));
-  assert.equal(result.messages.map(message => str(message, 3)).join(''), 'Provider response could not be completed.');
+  assert.equal(result.messages.map(message => str(message, 3)).join(''), 'Provider reported a failed response.');
   assert.equal(num(result.messages.at(-1), 5), 13);
   assert.ok(app.logs.some(l => l.event === 'chat-error' && l.code === 'upstream_stream_error'));
 });
@@ -419,7 +419,7 @@ test('firstResponse timeout triggers code 13 and upstream_timeout error', async 
     await new Promise(r => setTimeout(r, 200));
   }, 'openai-responses', { firstResponseMs: 30, idleMs: 500 });
   const result = unpack(Buffer.from(await (await fetch(app.url)).arrayBuffer()));
-  assert.equal(result.messages.map(message => str(message, 3)).join(''), 'Provider response could not be completed.');
+  assert.equal(result.messages.map(message => str(message, 3)).join(''), 'Provider did not respond before the timeout.');
   assert.equal(num(result.messages.at(-1), 5), 13);
   assert.ok(app.logs.some(l => l.event === 'chat-error' && l.code === 'upstream_timeout'));
 });

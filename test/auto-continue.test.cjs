@@ -590,7 +590,7 @@ test('cancellation before first response, reset/dispose during in-flight auto, a
   assert.equal(scheduler.pendingCount(), 0);
 });
 
-test('manager setAutoContinue persists setting with boolean validation and updates public state', async () => {
+test('manager setAutoContinue persists backend retries, clears legacy continuation and updates public state', async () => {
   let savedConfig = { enabled: true, providers: [] };
   const manager = createManager({
     read: () => savedConfig,
@@ -600,15 +600,17 @@ test('manager setAutoContinue persists setting with boolean validation and updat
   const s0 = manager.state();
   assert.equal(s0.autoContinueOnProviderError, false);
 
-  await assert.rejects(manager.dispatch('setAutoContinue', { enabled: 'true' }), /自动继续/);
-  await assert.rejects(manager.dispatch('setAutoContinue', { enabled: 1 }), /自动继续/);
+  await assert.rejects(manager.dispatch('setAutoContinue', { enabled: 'true' }), /自动重试/);
+  await assert.rejects(manager.dispatch('setAutoContinue', { enabled: 1 }), /自动重试/);
 
   const s1 = await manager.dispatch('setAutoContinue', { enabled: true });
   assert.equal(s1.autoContinueOnProviderError, true);
-  assert.equal(savedConfig.autoContinueOnProviderError, true);
+  assert.equal(savedConfig.autoRetryProviderRequests, true);
+  assert.equal(savedConfig.autoContinueOnProviderError, false);
 
   const s2 = await manager.dispatch('setAutoContinue', { enabled: false });
   assert.equal(s2.autoContinueOnProviderError, false);
+  assert.equal(savedConfig.autoRetryProviderRequests, false);
   assert.equal(savedConfig.autoContinueOnProviderError, false);
 });
 

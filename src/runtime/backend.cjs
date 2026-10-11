@@ -27,6 +27,43 @@ function runtimeIdentity(root, freshSource = false) {
 }
 function controlFile(root) { return path.join(root, 'runtime-control.json'); }
 
+function configureBackendProxy(root, log = () => {}, env = process.env) {
+  let settings = {};
+  try {
+    settings = require('../lifecycle/jsonc-edit.cjs').parse(
+      fs.readFileSync(path.resolve(root, '../../settings.json'), 'utf8')).value;
+  } catch (error) {
+    if (error.code !== 'ENOENT') log('proxy-settings-error', { code: 'settings_unreadable' });
+  }
+  const disabled = settings['http.proxySupport'] === 'off';
+  const configured = typeof settings['http.proxy'] === 'string' ? settings['http.proxy'].trim() : '';
+  const proxyEnv = {
+    HTTP_PROXY: disabled ? '' : configured || env.http_proxy || env.HTTP_PROXY || '',
+    HTTPS_PROXY: disabled ? '' : configured || env.https_proxy || env.HTTPS_PROXY || '',
+    // The ACP bridge, health and management requests must stay on loopback.
+    NO_PROXY: [env.no_proxy || env.NO_PROXY || '', 'localhost', '127.0.0.1', '::1', '[::1]'].filter(Boolean).join(','),
+  };
+  const mode = disabled ? 'disabled' : configured ? 'settings' :
+    proxyEnv.HTTP_PROXY || proxyEnv.HTTPS_PROXY ? 'environment' : 'direct';
+  if (typeof http.setGlobalProxyFromEnv !== 'function') {
+    log('proxy-configured', { mode: mode === 'direct' || mode === 'disabled' ? mode : 'unsupported' });
+    return () => {};
+  }
+  try {
+    for (const value of [proxyEnv.HTTP_PROXY, proxyEnv.HTTPS_PROXY]) if (value) {
+      const url = new URL(value);
+      if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) throw new Error('Invalid proxy URL');
+    }
+    // Configure once before serving requests. Node also applies this to fetch().
+    const restore = http.setGlobalProxyFromEnv(proxyEnv);
+    log('proxy-configured', { mode });
+    return restore;
+  } catch {
+    log('proxy-configured', { mode: 'invalid' });
+    return () => {};
+  }
+}
+
 async function startBackend({ root, port = PORT, log = () => {} }) {
   const identity = runtimeIdentity(root);
   const instanceId = crypto.randomUUID();
@@ -119,6 +156,7 @@ async function startBackend({ root, port = PORT, log = () => {} }) {
           response.on('close', () => { if (!response.writableFinished) abort.abort(); });
           log('inference', { model: route.model, effort: route.effort, tools: chat.tools.map(t => t.name) });
           await serveChat({ request: chat, route, provider, res: response, signal: abort.signal,
+            retry: { enabled: (current.autoRetryProviderRequests ?? current.autoContinueOnProviderError) === true },
             log: ({ event, ...data }) => log(event, data), onMetrics: recordMetrics });
           return;
         }
@@ -227,9 +265,10 @@ if (require.main === module) {
       fs.appendFileSync(logFile, JSON.stringify({ time: new Date().toISOString(), event, ...data }) + '\n', { mode: 0o600 });
     } catch {}
   };
+  configureBackendProxy(root, log);
   startBackend({ root, log }).then(backend => {
     backend.stopped.then(() => process.exit(0));
     for (const name of ['SIGTERM', 'SIGINT']) process.on(name, () => backend.close().then(() => process.exit(0)));
   }).catch(error => { log('startup-error', { code: error.code === 'EADDRINUSE' ? 'port_in_use' : 'startup_failed' }); process.exit(error.code === 'EADDRINUSE' ? 0 : 1); });
 }
-module.exports = { startBackend, runtimeIdentity, controlFile, PORT, VERSION, MANAGEMENT_PROTOCOL };
+module.exports = { startBackend, runtimeIdentity, controlFile, configureBackendProxy, PORT, VERSION, MANAGEMENT_PROTOCOL };

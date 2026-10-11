@@ -92,7 +92,7 @@ test('runtime health exposes ownership and source identity without exposing its 
   assert.match(control.token, /^[a-f0-9]{64}$/);
   assert.ok(!JSON.stringify(health).includes(control.token));
   assert.ok(!JSON.stringify(f.logs).includes(control.token));
-  assert.equal(fs.statSync(actualBackend.controlFile(f.root)).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(actualBackend.controlFile(f.root)).mode & 0o777, 0o600);
   assert.equal((await f.shutdown('wrong-token')).status, 403);
   assert.equal((await f.health()).draining, false);
 });

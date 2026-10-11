@@ -115,12 +115,12 @@ test('authentication uses only known record, read-only, and errors redact underl
   assert.equal(closed, true);
   assert.equal(readKey({ env: { WINDSURF_API_KEY: 'env-key' }, dbPath }), 'env-key');
   assert.throws(() => readKey({ env: {}, dbPath, database: class { constructor() { throw new Error('SECRET'); } } }), /^Error: credentials_unavailable$/);
-  assert.match(credentialPath({ platform: 'darwin', home: '/home/user' }), /Devin\/User\/globalStorage\/state.vscdb$/);
+  assert.match(credentialPath({ platform: 'darwin', home: '/home/user' }), /Devin[\\/]User[\\/]globalStorage[\\/]state.vscdb$/);
 });
 test('MCP configuration has fixed root, package entry and no credentials', () => {
   const config = mcpConfig({ extensionPath: '/plugin', root: '/project', node: '/bin/node' });
   assert.deepEqual(config.mcpServers['fusion-fast-context'], { command: '/bin/node',
-    args: ['/plugin/src/fast-context/server.cjs', '--root', '/project'] });
+    args: [path.join('/plugin', 'src/fast-context/server.cjs'), '--root', '/project'] });
   assert.doesNotMatch(JSON.stringify(config), /api.?key|token|password/i);
 });
 test('config UI refuses untrusted workspace and does not alter harness files', async () => {
@@ -144,7 +144,7 @@ test('config UI generates an unsaved document only after explicit confirmation',
     registerFastContext({ vscode, context: { extensionPath: '/plugin', subscriptions: [] } });
     await handler();
     if (confirmed) assert.deepEqual(JSON.parse(document.content).mcpServers['fusion-fast-context'].args,
-      ['/plugin/src/fast-context/server.cjs', '--root', '/project']);
+      [path.join('/plugin', 'src/fast-context/server.cjs'), '--root', '/project']);
     else assert.equal(document, undefined);
   }
 });

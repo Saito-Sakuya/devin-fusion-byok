@@ -37,8 +37,8 @@ function semanticOutput(event, chat) {
     items.some(item => item?.type === 'function_call' && (item.name || item.arguments));
   return { output: Boolean(text || delta || tool), text: Boolean(text) };
 }
-function createTracker({ id, request, route, provider, now = () => performance.now(), startedAt = new Date().toISOString() }) {
-  const start = now();
+function createTracker({ id, request, route, provider, now = () => performance.now(), startTime, startedAt = new Date().toISOString() }) {
+  const start = startTime ?? now();
   let firstOutput = null, firstText = null, firstResponse = null, lastOutput = null, usage = null, complete = false;
   let hasTools = false, hasReasoning = false, terminalAt = null;
   const toolIds = new Set();

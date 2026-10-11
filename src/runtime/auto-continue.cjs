@@ -8,10 +8,12 @@ const ATTACHED = Symbol.for('devin-fusion-byok.auto-continue.attached');
 const TARGET_ERROR = 'Provider response could not be completed';
 const TRANSIENT_HTTP_RE = /Provider returned HTTP (?:408|429|500|502|503|504)\.$/;
 const TERMINAL_BLOCKER_RE = /(?:Provider returned HTTP (?:4\d\d|5\d\d)\.|Provider response format is invalid\.)$/;
+const RETRY_STOPPED_RE = /Automatic retries stopped \([^\r\n]*\)\.$/;
 
 function matchesProviderError(text) {
   if (typeof text !== 'string') return false;
   const trimmed = text.trimEnd();
+  if (RETRY_STOPPED_RE.test(trimmed)) return false;
   if (trimmed.endsWith(TARGET_ERROR) || trimmed.endsWith(TARGET_ERROR + '.')) return true;
   return TRANSIENT_HTTP_RE.test(trimmed);
 }
@@ -19,6 +21,7 @@ function matchesProviderError(text) {
 function matchesTerminalBlocker(text) {
   if (typeof text !== 'string') return false;
   const trimmed = text.trimEnd();
+  if (RETRY_STOPPED_RE.test(trimmed)) return true;
   if (TRANSIENT_HTTP_RE.test(trimmed)) return false;
   return TERMINAL_BLOCKER_RE.test(trimmed);
 }

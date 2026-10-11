@@ -486,15 +486,15 @@ function panelClient(modelSupportsImages, vscode, normalizeBaseUrlPath) {
     const status = state.autoContinueStatus === 'attached' ? null
       : state.autoContinueStatus === 'waiting' ? '还没连上会话：重新加载窗口并新建对话后生效。'
       : '自动继续当前不可用，请查看插件输出日志。';
-    container.append(element('div', { class: 'section-head' }, element('h2', { text: '自动继续' })),
+    container.append(element('div', { class: 'section-head' }, element('h2', { text: '自动重试与继续' })),
       element('div', { class: 'list' },
-        setting('服务商出错时自动重试', '临时错误打断回复时自动发送 continue。按量计费的服务商可能多扣费。',
+        setting('服务商出错时自动重试', 'BYOK 临时网络或服务端错误最多重试 3 次，间隔约 2、4、8 秒。已输出内容后不重发，点击停止可取消；重试可能产生额外用量。',
           switchInput(state.autoContinueOnProviderError === true, '服务商出错时自动重试',
             value => run(() => request('setAutoContinue', { enabled: value })), off())),
         setting('待办没做完时自动继续', '会话里还有未完成的 Plan 时自动推进，随时可以手动停止。',
           switchInput(state.autoContinueUntilPlanComplete === true, '待办没做完时自动继续',
             value => run(() => request('setAutoContinueUntilPlanComplete', { enabled: value })), off()))),
-      element('p', { class: 'warn mt', text: status || '', hidden: !status }));
+      element('p', { class: 'warn mt', text: status || '', hidden: !status || state.autoContinueUntilPlanComplete !== true }));
   }
 
   function renderRoles() {
@@ -713,14 +713,14 @@ function panelClient(modelSupportsImages, vscode, normalizeBaseUrlPath) {
   function providerDialog(provider) {
     const { dialog, form } = openDialog(provider ? '编辑供应商' : '添加供应商');
     const name = input(provider?.name, { required: true, maxlength: 80, placeholder: '例如：OpenRouter' });
-    const baseUrl = input(provider?.baseUrl, { type: 'url', required: true, placeholder: 'https://example.com/v1', spellcheck: 'false' });
+    const baseUrl = input(provider?.baseUrl, { type: 'url', required: true, placeholder: 'https://example.com', spellcheck: 'false' });
     const apiFormat = element('select', { 'aria-label': 'API 类型' },
       element('option', { value: 'openai-responses', text: 'OpenAI Responses' }),
       element('option', { value: 'openai', text: 'OpenAI Chat Completions' }),
       element('option', { value: 'anthropic', text: 'Anthropic Messages' }));
     apiFormat.value = provider?.apiFormat || 'openai-responses';
     const apiKey = input('', { type: 'password', autocomplete: 'new-password', placeholder: provider?.keyConfigured ? '留空则不修改' : '', spellcheck: 'false' });
-    const urlField = field('API 地址', baseUrl, '只填域名时会自动补上 /v1；地址里已写了 /v1（或 /v4、/v1beta 等版本号）就按原样使用。');
+    const urlField = field('API 地址', baseUrl, 'Anthropic Messages 不会自动补 /v1，需要时请手动填写；OpenAI 接口在地址中没有版本号时会自动补 /v1。');
     const urlPreview = element('span', { class: 'hint url-preview' });
     urlField.append(urlPreview);
     const refreshPreview = () => {
@@ -728,7 +728,7 @@ function panelClient(modelSupportsImages, vscode, normalizeBaseUrlPath) {
       try { url = new URL(baseUrl.value.trim()); } catch { url = null; }
       urlPreview.replaceChildren();
       if (!url || !['http:', 'https:'].includes(url.protocol)) return;
-      const base = url.origin + normalizeBaseUrlPath(url.pathname);
+      const base = url.origin + normalizeBaseUrlPath(url.pathname, apiFormat.value);
       const path = { openai: '/chat/completions', anthropic: '/messages' }[apiFormat.value] || '/responses';
       urlPreview.append('实际请求：' + base + path, element('br'), '获取模型：' + base + '/models');
     };

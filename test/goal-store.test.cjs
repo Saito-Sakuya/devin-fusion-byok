@@ -41,8 +41,8 @@ test('goal records round-trip, are stored per session, and reject malformed reco
   assert.equal(store.readGoal(base, 'session-b'), null);
   const file = store.goalFile(base, 'session-a');
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).sessionId, 'session-a');
-  assert.equal(fs.statSync(path.dirname(file)).mode & 0o777, 0o700);
-  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(path.dirname(file)).mode & 0o777, 0o700);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
   assert.throws(() => store.writeGoal(base, { ...value, revision: 0 }), /goal_record_invalid/);
   assert.throws(() => store.writeGoal(base, { ...value, status: 'nonsense' }), /goal_record_invalid/);
   assert.throws(() => store.writeGoal(base, { ...value, maxRuns: 0 }), /goal_record_invalid/);
@@ -118,7 +118,7 @@ test('capability tokens are single-run, path-safe, and cleaned per run', t => {
   const token = capabilityFor(base, goal, firstRun);
   assert.match(token, /^[a-f0-9]{64}$/);
   const file = store.capabilityFile(base, token);
-  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
   assert.equal(store.readCapability(base, token).runId, firstRun);
   assert.equal(store.readCapability(base, '../../etc/passwd'), null);
   assert.equal(store.readCapability(base, token + '/../x'), null);

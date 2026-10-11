@@ -38,7 +38,7 @@ test('owned originals survive multiple windows and own Fusion changes, while nat
   input['devin.acp.agentPreferences']['devin-cli'].model = 'gpt-native';
   input['devin.acp.agentEnv']['devin-cli'].WINDSURF_API_SERVER_URL = 'https://user-edited.example';
   assert.equal(restoreObject(input, again.changes).count, 0);
-  assert.equal(fs.statSync(path.join(f.root, RECEIPT)).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(f.root, RECEIPT)).mode & 0o777, 0o600);
 });
 test('a deliberate re-enable captures a user-edited original rather than an obsolete prior backup', t => {
   const f = fixture(t);
@@ -77,7 +77,7 @@ test('uninstall restores matching owned settings and retains an exact private ba
   fs.writeFileSync(f.settings, original);
   assert.deepEqual(uninstall({ extensionPath: f.extensionPath }), { restored: 1, failed: 0 });
   assert.equal(fs.readFileSync(f.settings + '.fusion-byok-before-uninstall', 'utf8'), original);
-  assert.equal(fs.statSync(f.settings + '.fusion-byok-before-uninstall').mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(f.settings + '.fusion-byok-before-uninstall').mode & 0o777, 0o600);
   assert.equal(parse(fs.readFileSync(f.settings, 'utf8')).value['devin.acp.agentEnv']['devin-cli'].KEEP, 'retained');
   assert.deepEqual(uninstall({ extensionPath: f.extensionPath }), { restored: 0, failed: 0 });
 });
@@ -89,7 +89,7 @@ test('unsafe JSONC is unchanged, with secret-free logs and an external recovery 
   assert.equal(fs.readFileSync(f.settings, 'utf8'), original);
   assert.ok(!JSON.stringify(logs).includes('private-original-value'));
   assert.ok(!JSON.stringify(logs).includes('hidden-value'));
-  assert.equal(fs.statSync(f.settings + '.fusion-byok-restore-pending.json').mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(f.settings + '.fusion-byok-restore-pending.json').mode & 0o777, 0o600);
 });
 test('old package uninstall cannot revert a newer installation receipt', t => {
   const f = fixture(t); remember(f.receipt, envPath, { exists: false }, managed); saveReceipt(f.receipt);

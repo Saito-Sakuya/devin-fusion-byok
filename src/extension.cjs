@@ -159,9 +159,9 @@ async function activate(context) {
       });
       autoContinue = installAutoContinue({
         nativeMainPath: nativeMain,
-        isEnabled: () => config().enabled !== false && (config().autoContinueOnProviderError === true || config().autoContinueUntilPlanComplete === true),
+        isEnabled: () => config().enabled !== false && config().autoContinueUntilPlanComplete === true,
         getOptions: () => ({
-          onProviderError: config().autoContinueOnProviderError === true,
+          onProviderError: false,
           untilPlanComplete: config().autoContinueUntilPlanComplete === true
         }),
         isSessionSuppressed: sessionId => goalController ? goalController.ownsSession(sessionId) : false,

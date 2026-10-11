@@ -5,20 +5,20 @@ const { execFileSync } = require('node:child_process');
 const { restartApp, relaunchScript, appBundle } = require('../src/runtime/app-restart.cjs');
 const { createPanelController } = require('../src/panel/controller.cjs');
 
-test('the bundle is derived from the app root and rejected otherwise', () => {
+test('the bundle is derived from the app root and rejected otherwise', { skip: process.platform === 'win32' ? 'macOS bundle paths and POSIX shell required' : false }, () => {
   assert.equal(appBundle('/Applications/Devin.app/Contents/Resources/app'), '/Applications/Devin.app');
   assert.equal(appBundle('/opt/devin/resources/app'), '');
   assert.equal(appBundle(undefined), '');
 });
 
-test('the relaunch helper is valid shell, quotes the bundle and gives up after the wait', () => {
+test('the relaunch helper is valid shell, quotes the bundle and gives up after the wait', { skip: process.platform === 'win32' ? 'macOS bundle paths and POSIX shell required' : false }, () => {
   const script = relaunchScript("/Applications/Dev in's.app", 90);
   execFileSync('/bin/sh', ['-n', '-c', script]);
   assert.match(script, /\[ \$i -gt 180 \] && exit 0/);
   assert.ok(script.includes("/usr/bin/open '/Applications/Dev in'\\''s.app'"));
 });
 
-test('restart spawns a detached helper before quitting', async () => {
+test('restart spawns a detached helper before quitting', { skip: process.platform === 'win32' ? 'macOS bundle paths and POSIX shell required' : false }, async () => {
   const calls = [];
   const vscode = { env: { appRoot: '/Applications/Devin.app/Contents/Resources/app' },
     commands: { executeCommand: async command => calls.push(['command', command]) } };

@@ -54,7 +54,7 @@ function parseChat(data) {
       modelEnum: camel(data, 'internalChatModel', 'internal_chat_model') ?? data.model ?? 0,
       systemPrompt: data.prompt ?? camel(data, 'systemPrompt', 'system_prompt') ?? '',
       messages: (camel(data, 'chatMessagePrompts', 'chat_message_prompts') ?? data.messages ?? data.prompts ?? []).map(jsonMessage),
-      tools: (data.tools || []).map(tool => ({ name: tool.name, description: tool.description || '', parameters: schema(camel(tool, 'jsonSchemaString', 'json_schema_string') ?? camel(tool, 'parametersJson', 'parameters_json') ?? camel(tool, 'inputSchema', 'input_schema') ?? tool.parameters) })),
+      tools: (data.tools || []).map(tool => ({ name: tool.name, description: tool.description || '', parameters: schema(camel(tool, 'jsonSchemaString', 'json_schema_string') ?? camel(tool, 'parametersJson', 'parameters_json') ?? camel(tool, 'inputSchema', 'input_schema') ?? tool.parameters), strict: tool.strict === true })),
       toolChoice: jsonToolChoice(camel(data, 'toolChoice', 'tool_choice')),
       maxTokens: camel(data, 'maxTokens', 'max_tokens'),
     };
@@ -63,7 +63,7 @@ function parseChat(data) {
   return {
     modelUid: str(data, 21), modelEnum: num(data, 6), systemPrompt: str(data, 2),
     messages: fields(data, 3).map(field => protoMessage(field.value)),
-    tools: fields(data, 10).map(({ value }) => ({ name: str(value, 1), description: str(value, 2), parameters: schema(str(value, 3)) })),
+    tools: fields(data, 10).map(({ value }) => ({ name: str(value, 1), description: str(value, 2), parameters: schema(str(value, 3)), strict: Boolean(num(value, 12)) })),
     toolChoice: choice ? { type: str(choice, 1), name: str(choice, 2) } : undefined,
     maxTokens: undefined,
   };
@@ -75,6 +75,7 @@ function prefix(id) {
 }
 function textChunk(id, text) { return Buffer.concat([...prefix(id), s(3, text)]); }
 function thinkingChunk(id, text) { return Buffer.concat([...prefix(id), s(9, text)]); }
+function signatureChunk(id, signature) { return Buffer.concat([...prefix(id), s(10, signature)]); }
 function toolChunk(id, tools) {
   return Buffer.concat([...prefix(id), ...tools.map(tool => m(6, Buffer.concat([s(1, tool.id), s(2, tool.name), s(3, tool.arguments ?? tool.arguments_json ?? '')])))]);
 }
@@ -84,4 +85,4 @@ function usageChunk(id, modelUid, usage) {
     m(7, Buffer.concat([v(2, usage.inputTokens), v(3, usage.outputTokens), s(7, id), s(9, modelUid)]))]);
 }
 
-module.exports = { parseChat, textChunk, thinkingChunk, toolChunk, stopChunk, usageChunk };
+module.exports = { parseChat, textChunk, thinkingChunk, signatureChunk, toolChunk, stopChunk, usageChunk };

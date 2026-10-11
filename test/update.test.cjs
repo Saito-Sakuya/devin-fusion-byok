@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { compareVersions, releaseInfo, allowedUrl, createUpdater, requestBytes, verifyPackage } = require('../src/update.cjs');
-const release = version => ({ tag_name: 'v' + version, assets: [{ name: `devin-fusion-byok-${version}.vsix`, size: 10, digest: 'sha256:' + 'a'.repeat(64), browser_download_url: `https://github.com/kuobibulaien/devin-fusion-byok/releases/download/v${version}/devin-fusion-byok-${version}.vsix` }] });
+const release = version => ({ tag_name: 'v' + version, assets: [{ name: `devin-fusion-byok-${version}.vsix`, size: 10, digest: 'sha256:' + 'a'.repeat(64), browser_download_url: `https://github.com/Saito-Sakuya/devin-fusion-byok/releases/download/v${version}/devin-fusion-byok-${version}.vsix` }] });
 function setup(extra = {}) {
   const data = new Map(); let calls = 0;
   const updater = createUpdater({ currentVersion: '0.3.33', globalState: { get: (k, d) => data.has(k) ? data.get(k) : d, update: async (k, v) => data.set(k, v) }, request: async () => { calls++; return Buffer.from(JSON.stringify(release('0.3.34'))); }, ...extra });
@@ -21,7 +21,23 @@ test('release accepts exact trusted artifact only', () => {
   assert.equal(releaseInfo(noDigest).installable, false);
   const wrong = release('0.3.34'); wrong.assets[0].browser_download_url = 'https://evil.example/a.vsix';
   assert.equal(releaseInfo(wrong).installable, false);
+  const upstream = release('0.3.34');
+  upstream.assets[0].browser_download_url = upstream.assets[0].browser_download_url.replace('Saito-Sakuya', 'kuobibulaien');
+  assert.equal(releaseInfo(upstream).installable, false);
   assert.equal(releaseInfo({ ...release('0.3.34'), assets: [] }).installable, false);
+});
+
+test('update checks and release pages stay on the fork channel', async () => {
+  const requested = [];
+  const { updater } = setup({ request: async url => {
+    requested.push(url);
+    return Buffer.from(JSON.stringify(release('0.3.34')));
+  } });
+  assert.equal(updater.snapshot().releaseUrl, 'https://github.com/Saito-Sakuya/devin-fusion-byok/releases');
+  await updater.check();
+  assert.deepEqual(requested, ['https://api.github.com/repos/Saito-Sakuya/devin-fusion-byok/releases/latest']);
+  assert.equal(updater.snapshot().releaseUrl, 'https://github.com/Saito-Sakuya/devin-fusion-byok/releases/tag/v0.3.34');
+  updater.dispose();
 });
 test('redirect policy rejects untrusted schemes credentials hosts and ports', () => {
   for (const url of ['http://github.com/a', 'https://github.com.evil.test/a', 'https://user:pass@github.com/a', 'https://github.com:8443/a']) assert.throws(() => allowedUrl(url));
@@ -96,7 +112,7 @@ test('controller routes updates separately from model settings and only opens tr
   const posts = [], actions = []; let receive, close;
   const disposable = { dispose() {} };
   const panel = { webview: { postMessage: async m => posts.push(m), onDidReceiveMessage: fn => { receive = fn; return disposable; } }, onDidDispose: fn => { close = fn; return disposable; }, dispose: () => close() };
-  const state = { releaseUrl: 'https://github.com/kuobibulaien/devin-fusion-byok/releases' };
+  const state = { releaseUrl: 'https://github.com/Saito-Sakuya/devin-fusion-byok/releases' };
   const updater = { snapshot: () => state, check: async o => actions.push(['check', o.force]), installUpdate: async () => actions.push(['install']), ignore: async () => actions.push(['ignore']), setAutoCheck: async enabled => actions.push(['auto', enabled]) };
   const controller = createPanelController({ vscode: { ViewColumn: { Active: 1 }, window: { createWebviewPanel: () => panel }, Uri: { parse: x => x }, env: { openExternal: async url => actions.push(['url', url]) } }, context: { subscriptions: [] }, manager: { dispatch() { throw Error('must not touch model settings'); } }, safeError: () => ({ message: 'error' }), updater });
   controller.open();

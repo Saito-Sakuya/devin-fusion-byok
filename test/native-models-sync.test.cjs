@@ -91,17 +91,18 @@ test('the endpoint rejects wrong and missing bearer tokens and browser origins',
 
 test('readNativeModels fails closed on foreign roots, stale receipts and unsupported backends', async t => {
   const f = await backendFixture(t);
-  await assert.rejects(readNativeModels({ root: f.root + '-other', port: f.backend.port }), /native_catalog_identity/,
+  const read = options => readNativeModels({ ...options, request: (url, init) => fetch(url, { ...init, headers: { ...init.headers, connection: 'close' } }) });
+  await assert.rejects(read({ root: f.root + '-other', port: f.backend.port }), /native_catalog_identity/,
     'a different root id is not this backend');
   const foreign = fs.mkdtempSync(path.join(os.tmpdir(), 'dfbyok-foreign-'));
   fs.writeFileSync(path.join(foreign, 'config.json'), '{}');
   const foreignBackend = await startBackend({ root: foreign, port: 0, log: () => {} });
   t.after(async () => { await foreignBackend.close(); fs.rmSync(foreign, { recursive: true, force: true }); });
-  await assert.rejects(readNativeModels({ root: f.root, port: foreignBackend.port }), /native_catalog_identity/,
+  await assert.rejects(read({ root: f.root, port: foreignBackend.port }), /native_catalog_identity/,
     'the control file must match the live instance identity');
   const control = JSON.parse(fs.readFileSync(controlFile(f.root), 'utf8'));
   fs.writeFileSync(controlFile(f.root), JSON.stringify({ ...control, token: '0'.repeat(64) }));
-  await assert.rejects(readNativeModels({ root: f.root, port: f.backend.port }), /native_catalog_unavailable/,
+  await assert.rejects(read({ root: f.root, port: f.backend.port }), /native_catalog_unavailable/,
     'a stale receipt token is rejected by the live backend');
   await f.backend.close();
   const restarted = await startBackend({ root: f.root, port: f.backend.port, log: () => {} });
@@ -109,7 +110,7 @@ test('readNativeModels fails closed on foreign roots, stale receipts and unsuppo
   const fresh = JSON.parse(fs.readFileSync(controlFile(f.root), 'utf8'));
   assert.notEqual(fresh.instanceId, control.instanceId);
   assert.notEqual(fresh.token, control.token);
-  const after = await readNativeModels({ root: f.root, port: f.backend.port });
+  const after = await read({ root: f.root, port: f.backend.port });
   assert.equal(after.status, 'empty', 'a restarted backend reports only its own observations');
   const legacy = await (async () => {
     const server = require('node:http').createServer((req, res) => {
@@ -121,7 +122,7 @@ test('readNativeModels fails closed on foreign roots, stale receipts and unsuppo
     return server;
   })();
   t.after(() => legacy.close());
-  const unsupported = await readNativeModels({ root: f.root, port: legacy.address().port });
+  const unsupported = await read({ root: f.root, port: legacy.address().port });
   assert.equal(unsupported.status, 'unsupported', 'an older backend without the capability reports unsupported');
 });
 

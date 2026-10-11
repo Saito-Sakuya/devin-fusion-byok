@@ -98,7 +98,7 @@ test('gateway timing includes metadata, tools and canceled usage; snapshots repl
   assert.equal(next.records.find(v => v.id === 'bad').gatewayTps, null);
 });
 
-test('persists private-safe records, resolves real SQLite IDs read-only and survives restart', async t => {
+test('persists private-safe records, resolves real SQLite IDs read-only and survives restart', { skip: !fs.existsSync('/usr/bin/sqlite3') ? 'system SQLite CLI required' : false }, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'byok-monitor-test-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const db = path.join(root, 'sessions.db');
@@ -111,7 +111,7 @@ test('persists private-safe records, resolves real SQLite IDs read-only and surv
   assert.equal(snapshot.records[0].attribution, 'response-id');
   assert.ok(!JSON.stringify(snapshot).includes('messageIds'));
   const file = path.join(root, 'monitor.jsonl');
-  assert.equal(fs.statSync(file).mode & 0o777, 0o600); assert.ok(!fs.readFileSync(file, 'utf8').includes('SECRET'));
+  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600); assert.ok(!fs.readFileSync(file, 'utf8').includes('SECRET'));
   assert.equal((await createMonitor({ root, databasePath: db }).snapshot()).records.length, 1);
   const missing = await createMonitor({ root, databasePath: path.join(root, 'missing.db') }).snapshot();
   assert.equal(missing.sessionStatus, 'unavailable'); assert.equal(missing.records[0].sessionId, null);
