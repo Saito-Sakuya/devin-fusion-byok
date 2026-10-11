@@ -1,8 +1,8 @@
 {
   "name": "devin-fusion-byok",
   "displayName": "Devin Fusion BYOK (Saito Fork)",
-  "description": "Devin Fusion BYOK fork with configurable Anthropic paths, Responses state preservation, proxy support and bounded provider retries.",
-  "version": "0.3.43",
+  "description": "Devin Fusion BYOK fork with cross-platform context metrics, Windows Goal reporting, configurable Anthropic paths and bounded provider retries.",
+  "version": "0.3.44",
   "publisher": "local",
   "license": "MIT",
   "repository": {

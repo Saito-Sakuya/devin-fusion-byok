@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { execFile } = require('node:child_process');
+const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
 const LIMIT = 5000;
 const token = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 const timing = value => Number.isFinite(value) && value >= 0 ? value : null;
@@ -138,20 +138,57 @@ function summarize(records) {
   result.throughputTps = { value: duration > 0 ? throughput.reduce((n, r) => n + r.outputTokens, 0) * 1000 / duration : null, samples: throughput.length };
   return result;
 }
-const quote = value => "'" + value.replace(/'/g, "''") + "'";
+function defaultDatabasePath({ platform = process.platform, env = process.env, home = os.homedir() } = {}) {
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  const data = platform === 'win32' ? env.APPDATA || paths.join(home, 'AppData', 'Roaming')
+    : env.XDG_DATA_HOME || paths.join(home, '.local', 'share');
+  return paths.join(data, platform === 'win32' ? 'Devin' : 'devin', 'cli', 'sessions.db');
+}
+function readSessionMatches(databasePath, ids, toolIds) {
+  const { DatabaseSync } = require('node:sqlite');
+  const db = new DatabaseSync(databasePath, { readOnly: true, timeout: 1000 });
+  try {
+    // Recent Devin versions keep subagent tool identities in message_nodes,
+    // without adding them to the older tool_call_state table. Read both forms.
+    const nodes = "WITH nodes AS (SELECT session_id, CASE WHEN json_valid(chat_message) THEN chat_message ELSE '{}' END AS message FROM message_nodes) ";
+    const queries = [
+      "SELECT session_id, json_extract(message, '$.message_id') AS message_id, 'message' AS kind FROM nodes WHERE json_extract(message, '$.message_id') IN (SELECT value FROM json_each(?))",
+      "SELECT session_id, json_extract(message, '$.tool_call_id') AS message_id, 'tool' AS kind FROM nodes WHERE json_extract(message, '$.tool_call_id') IN (SELECT value FROM json_each(?))",
+      "SELECT session_id, json_extract(tool.value, '$.id') AS message_id, 'tool' AS kind FROM nodes, json_each(CASE WHEN json_type(message, '$.tool_calls') = 'array' THEN json_extract(message, '$.tool_calls') ELSE '[]' END) AS tool WHERE tool.type = 'object' AND json_extract(tool.value, '$.id') IN (SELECT value FROM json_each(?))"
+    ];
+    const tools = JSON.stringify(toolIds);
+    const parameters = [JSON.stringify(ids), tools, tools];
+    if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tool_call_state'").get()) {
+      queries.push("SELECT session_id, tool_call_id AS message_id, 'tool' AS kind FROM tool_call_state WHERE tool_call_id IN (SELECT value FROM json_each(?))");
+      parameters.push(tools);
+    }
+    return db.prepare(nodes + queries.join(' UNION ')).all(...parameters);
+  } finally { db.close(); }
+}
 async function sessionMatches(databasePath, ids, toolIds = []) {
   if (!ids.length && !toolIds.length) return [];
-  const values = ids.map(quote).join(',') || "''";
-  const tools = toolIds.map(quote).join(',') || "''";
-  const sql = `.timeout 1000\nSELECT DISTINCT session_id, json_extract(chat_message, '$.message_id') AS message_id, 'message' AS kind FROM message_nodes WHERE json_extract(chat_message, '$.message_id') IN (${values}) UNION SELECT session_id, tool_call_id AS message_id, 'tool' AS kind FROM tool_call_state WHERE tool_call_id IN (${tools});\n`;
   return new Promise((resolve, reject) => {
-    const child = execFile('/usr/bin/sqlite3', ['-readonly', '-json', databasePath], { timeout: 8000, maxBuffer: 32 * 1024 * 1024 }, (error, stdout) => {
-      if (error) { reject(new Error('session_lookup_unavailable')); return; }
-      try { resolve(JSON.parse(stdout || '[]')); } catch { reject(new Error('session_lookup_invalid')); }
-    });
-    child.stdin.on('error', () => {});
-    child.stdin.end(sql);
+    // JSON parsing of a large live database must not block streaming inference.
+    const worker = new Worker(__filename, { workerData: { kind: 'byok-session-lookup', databasePath, ids, toolIds } });
+    let settled = false;
+    const finish = (error, rows) => {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      worker.terminate().catch(() => {});
+      if (error) reject(new Error('session_lookup_unavailable')); else resolve(rows);
+    };
+    const timer = setTimeout(() => finish(true), 8000);
+    worker.once('message', result => finish(result?.error || !Array.isArray(result?.rows), result?.rows));
+    worker.once('error', () => finish(true));
+    worker.once('exit', () => finish(true));
   });
+}
+if (!isMainThread && workerData?.kind === 'byok-session-lookup') {
+  try {
+    parentPort.postMessage({ rows: readSessionMatches(workerData.databasePath, workerData.ids, workerData.toolIds) });
+  } catch {
+    parentPort.postMessage({ error: 'session_lookup_unavailable' });
+  }
 }
 function associate(records, rows) {
   const mapping = new Map();
@@ -172,7 +209,7 @@ function associate(records, rows) {
       attribution: sessions?.size === 1 ? attribution : sessions?.size > 1 ? 'ambiguous' : 'unassigned' };
   });
 }
-function createMonitor({ root, databasePath = path.join(os.homedir(), '.local/share/devin/cli/sessions.db') }) {
+function createMonitor({ root, databasePath = defaultDatabasePath() }) {
   const file = path.join(root, 'monitor.jsonl');
   let records = [], storageError = false, pending = null, cached = null, cachedAt = 0, revision = 0;
   try {
@@ -224,4 +261,4 @@ function createMonitor({ root, databasePath = path.join(os.homedir(), '.local/sh
   }
   return { record, snapshot, close() {} };
 }
-module.exports = { createMonitor, createTracker, usageOf, semanticOutput, summarize, associate };
+module.exports = { createMonitor, createTracker, usageOf, semanticOutput, summarize, associate, defaultDatabasePath };

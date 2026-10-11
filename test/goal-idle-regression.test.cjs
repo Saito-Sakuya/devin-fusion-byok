@@ -195,7 +195,7 @@ for (const protocol of [1, 2]) {
 }
 
 // Installed native parser is an additional local check, not a CI dependency.
-const nativeAcpPath = '/Applications/Devin.app/Contents/Resources/app/node_modules/@exa/windsurf-acp/index.cjs';
+const { nativeAcpPath } = require('./support/installed-devin.cjs');
 test('installed ACP distinguishes non-terminal v2 local acknowledgement from the real v1 result', { skip: !fs.existsSync(nativeAcpPath) }, () => {
   const native = require(nativeAcpPath);
   const request = { method: 'session/prompt', params: { sessionId: 's1' } };

@@ -22,8 +22,25 @@ function shellQuote(value) {
 function sessionStatus(value) { return SESSION_STATUSES.includes(value) ? value : 'unknown'; }
 function goalError(code, message) { const error = new Error(message); error.code = code; return error; }
 
-function reportCommandFor({ execPath, reportCliPath, storeRoot, token }) {
+function reportCommandFor({ execPath, reportCliPath, storeRoot, token, platform = process.platform }) {
   const example = JSON.stringify({ status: 'progress', evidence: '在这里写本次实际运行的证据' });
+  if (platform === 'win32') {
+    const quote = value => "'" + String(value).replace(/'/g, "''") + "'";
+    // Windows PowerShell 5 strips quotes in native JSON arguments. An ASCII
+    // base64 argument preserves UTF-8 evidence in both Windows PowerShell/PS7.
+    return [
+      '# Run in PowerShell; edit status and evidence in this JSON before reporting.',
+      '$goalReportJson = ' + quote(example),
+      '$goalReportPayload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($goalReportJson))',
+      '$goalPreviousRunAsNode = $env:ELECTRON_RUN_AS_NODE',
+      'try {',
+      "  $env:ELECTRON_RUN_AS_NODE = '1'",
+      '  & ' + quote(execPath) + ' ' + quote(reportCliPath) +
+        ' --store ' + quote(storeRoot) + ' --capability ' + quote(token) + ' --report-base64 $goalReportPayload | Out-Host',
+      "  if ($LASTEXITCODE -ne 0) { throw 'Goal report failed; inspect the JSON result above.' }",
+      '} finally { $env:ELECTRON_RUN_AS_NODE = $goalPreviousRunAsNode }'
+    ].join('\n');
+  }
   return 'ELECTRON_RUN_AS_NODE=1 ' + shellQuote(execPath) + ' ' + shellQuote(reportCliPath) +
     ' --store ' + shellQuote(storeRoot) + ' --capability ' + shellQuote(token) + ' ' + shellQuote(example);
 }

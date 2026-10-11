@@ -4,7 +4,7 @@
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-const rendererFile = '/Applications/Devin.app/Contents/Resources/app/out/vs/workbench/windsurf-chat-client/index.js';
+const { rendererFile } = require('./installed-devin.cjs');
 const available = fs.existsSync(rendererFile);
 let cached;
 const load = () => cached ??= fs.readFileSync(rendererFile, 'utf8');

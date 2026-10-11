@@ -5,7 +5,8 @@ const {
   normalizeEvidence, readCapability, readGoal, writeReport
 } = require('./goal-store.cjs');
 
-const USAGE = '用法：goal-report.cjs --store <绝对路径> --capability <令牌> \'{"status":"progress","evidence":"..."}\'';
+const USAGE = '用法：goal-report.cjs --store <绝对路径> --capability <令牌> \'{"status":"progress","evidence":"..."}\'；PowerShell 可用 --report-base64 <UTF-8 JSON 的 Base64>。';
+const MAX_REPORT_BYTES = 32 * 1024;
 const REPORT_FIELDS = new Set(['status', 'evidence']);
 
 const fail = error => ({ ok: false, error });
@@ -21,6 +22,16 @@ function parseArguments(argv) {
       continue;
     }
     if (argument === '--help' || argument === '-h') return { ok: true, help: true };
+    if (argument === '--report-base64') {
+      if (payload !== null) return fail('只接受一个 JSON 参数。');
+      const value = argv[++index];
+      if (typeof value !== 'string' || !value || value.length > Math.ceil(MAX_REPORT_BYTES / 3) * 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return fail('Base64 报告格式无效。');
+      const buffer = Buffer.from(value, 'base64');
+      if (buffer.length > MAX_REPORT_BYTES || buffer.toString('base64') !== value) return fail('Base64 报告格式无效。');
+      try { payload = new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
+      catch { return fail('报告必须是 UTF-8 JSON。'); }
+      continue;
+    }
     if (argument.startsWith('--')) return fail('不支持的参数：' + argument);
     if (payload !== null) return fail('只接受一个 JSON 参数。');
     payload = argument;
@@ -28,6 +39,7 @@ function parseArguments(argv) {
   if (!store || !token || payload === null) return fail('参数不完整。' + USAGE);
   if (!path.isAbsolute(store)) return fail('store 必须是绝对路径。');
   if (!capabilityToken(token)) return fail('能力令牌格式无效。');
+  if (Buffer.byteLength(payload, 'utf8') > MAX_REPORT_BYTES) return fail('报告过大。');
   let parsed;
   try { parsed = JSON.parse(payload); } catch { return fail('JSON 参数无法解析。'); }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fail('JSON 参数必须是对象。');
@@ -88,4 +100,4 @@ if (require.main === module) {
   process.exitCode = outcome.code;
 }
 
-module.exports = { main, parseArguments, validateReport, submit, USAGE };
+module.exports = { main, parseArguments, validateReport, submit, USAGE, MAX_REPORT_BYTES };

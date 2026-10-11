@@ -9,7 +9,7 @@ function goalPrompt({ goal, reportCommand }) {
     JSON.stringify(data),
     'Work toward the objective using the normal tools and the conversation so far. Verify completion against actual artifacts or command results. A completed todo list alone is not proof.',
     'Do not ask to continue merely because work remains. Continue useful work within the authorized scope. Do not bypass permission prompts, authentication, user cancellation, or destructive-operation confirmation.',
-    'Before ending this run, use the report command below through the shell tool. It accepts one JSON argument with status and evidence. Use status "progress" for concrete progress with work remaining, "waiting" when user input or an external event is required, "blocked" for a specific unresolved blocker, or "complete" only when the objective is fully achieved and verified.',
+    'Before ending this run, use the report command below through the shell tool. Edit status and evidence in its JSON (on Windows the command encodes that JSON for PowerShell). Keep the executable, script, store path and capability unchanged. Use status "progress" for concrete progress with work remaining, "waiting" when user input or an external event is required, "blocked" for a specific unresolved blocker, or "complete" only when the objective is fully achieved and verified.',
     'Evidence must describe actual results and remaining work honestly. Never report an unrun test as passed. A "complete" report ends the goal, so include the concrete evidence that proves it.',
     'For waiting or blocked reports, include the specific action needed in evidence and do not keep retrying. If the report command fails, explain that failure; do not claim the goal state was updated.',
     reportCommand,

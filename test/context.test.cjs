@@ -129,7 +129,8 @@ test('empty context is a compact data grid without diagnostics', () => {
   const details = contextDetails(null);
   assert.equal(details.percent, null);
   assert.ok(details.rows.every(row => row.value === '—'));
-  assert.ok(details.request.every(row => row.value === '—'));
+  assert.equal(details.request[0].value, '尚未观察到会话');
+  assert.ok(details.request.slice(1).every(row => row.value === '—'));
   assert.doesNotMatch(details.lines.join('\n'), /连接|更新|不保证|未提供/);
 });
 test('details use exact session match, distinguish missing from zero, and clamp only the visual ring', () => {
@@ -137,7 +138,7 @@ test('details use exact session match, distinguish missing from zero, and clamp 
   const monitor = { sessions: [{ sessionId: 'b', records: [{ model: 'foreign', startedAt: '2026-01-01', gatewayTps: 999 }] }] };
   let result = contextDetails(session, monitor);
   assert.equal(result.percent, 100); assert.ok(result.lines.join('\n').includes('200%'));
-  assert.ok(!result.lines.join('\n').includes('999')); assert.equal(result.request[0].value, '—');
+  assert.ok(!result.lines.join('\n').includes('999')); assert.equal(result.request[0].value, '暂无可归属的已完成 BYOK 请求');
   monitor.sessions[0].sessionId = 'a'; monitor.sessions[0].records[0].gatewayTps = 0;
   result = contextDetails(session, monitor);
   assert.ok(result.lines.includes('网关 TPS：0'));
@@ -212,7 +213,7 @@ test('durations use seconds while tokens and TPS retain their units', () => {
   assert.equal(values.gatewayTps, '1,234'); assert.equal(values.inputTokens, '1,234');
   assert.equal(contextDetails({ ...session, turn: { durationMs: 9999 } }, monitor).tooltip, result.tooltip);
   monitor.sessions.push(monitor.sessions[0]);
-  assert.equal(contextDetails(session, monitor).request[0].value, '—');
+  assert.equal(contextDetails(session, monitor).request[0].value, '暂无可归属的已完成 BYOK 请求');
 });
 test('statusbar uses untrusted plain text, coalesces metrics reads and disposes timer', async () => {
   let reads = 0, resolve;

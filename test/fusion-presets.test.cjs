@@ -114,9 +114,9 @@ test('legacy default migration is exact, idempotent and does not recreate explic
   assert.equal(Object.hasOwn(missing, 'fusionPresets'), false);
 });
 
-test('installed picker keeps each named preset independently selectable and featured', () => {
+test('installed picker keeps each named preset independently selectable and featured', t => {
   const { available, loadFamilyPicker, loadGroupSorter } = require('./support/installed-renderer.cjs');
-  if (!available) return;
+  if (!available) { t.skip('installed Devin renderer required'); return; }
   const picker = loadFamilyPicker();
   const input = config(); input.fusionPresets = [preset(), preset('two', '排查')];
   const catalog = buildCatalog(input);

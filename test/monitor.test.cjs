@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { DatabaseSync } = require('node:sqlite');
 const { createMonitor, createTracker, usageOf, associate, summarize } = require('../src/runtime/monitor.cjs');
 function tracker() {
   let clock = 0;
@@ -98,11 +98,13 @@ test('gateway timing includes metadata, tools and canceled usage; snapshots repl
   assert.equal(next.records.find(v => v.id === 'bad').gatewayTps, null);
 });
 
-test('persists private-safe records, resolves real SQLite IDs read-only and survives restart', { skip: !fs.existsSync('/usr/bin/sqlite3') ? 'system SQLite CLI required' : false }, async t => {
+test('persists private-safe records, resolves real SQLite IDs read-only and survives restart', async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'byok-monitor-test-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const db = path.join(root, 'sessions.db');
-  execFileSync('/usr/bin/sqlite3', [db, "CREATE TABLE tool_call_state(session_id TEXT,tool_call_id TEXT); CREATE TABLE message_nodes(session_id TEXT,chat_message TEXT); INSERT INTO message_nodes VALUES('session-a','{\"message_id\":\"response-1\"}');"]);
+  const database = new DatabaseSync(db);
+  database.exec("CREATE TABLE tool_call_state(session_id TEXT,tool_call_id TEXT); CREATE TABLE message_nodes(session_id TEXT,chat_message TEXT); INSERT INTO message_nodes VALUES('session-a','{\"message_id\":\"response-1\"}');");
+  database.close();
   const monitor = createMonitor({ root, databasePath: db });
   const record = tracker().value.finish('success', 200);
   monitor.record({ ...record, secret: 'SECRET' }); monitor.record(record);
@@ -115,4 +117,5 @@ test('persists private-safe records, resolves real SQLite IDs read-only and surv
   assert.equal((await createMonitor({ root, databasePath: db }).snapshot()).records.length, 1);
   const missing = await createMonitor({ root, databasePath: path.join(root, 'missing.db') }).snapshot();
   assert.equal(missing.sessionStatus, 'unavailable'); assert.equal(missing.records[0].sessionId, null);
+  assert.equal(fs.existsSync(path.join(root, 'missing.db')), false);
 });

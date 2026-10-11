@@ -643,7 +643,7 @@ test('snapshot never exposes capability tokens or credential fields', async t =>
 test('report command quotes paths safely and carries no other goal secret', async t => {
   const h = await started(t);
   const prompt = h.dispatched[0].prompt;
-  assert.match(prompt, /ELECTRON_RUN_AS_NODE=1/);
+  assert.match(prompt, process.platform === 'win32' ? /\$env:ELECTRON_RUN_AS_NODE = '1'/ : /ELECTRON_RUN_AS_NODE=1/);
   assert.match(prompt, /--capability '[a-f0-9]{64}'/);
   assert.match(prompt, /'{"status":"progress","evidence":"[^"]*"}'/);
 });
