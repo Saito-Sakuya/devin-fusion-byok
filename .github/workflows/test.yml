@@ -21,5 +21,13 @@ jobs:
       - uses: actions/setup-node@v7.1.0
         with:
           node-version: '24.16.0'
+      - name: Install Unix test and packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ripgrep sqlite3 zip
+      - name: Install Windows search tool
+        if: runner.os == 'Windows'
+        run: choco install ripgrep --yes --no-progress
       - run: npm test
       - run: npm run package

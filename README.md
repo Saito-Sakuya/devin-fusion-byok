@@ -141,7 +141,7 @@
 
 ## 开发
 
-使用 Node.js **24.14+**；代码无需安装 npm 依赖。`npm run package` 支持 Windows（内置 PowerShell `Compress-Archive`）及安装了 `zip` 的 macOS/Linux。生成的包只包含插件源码、说明和许可证，不包含测试、用户配置或运行记录。
+使用 Node.js **24.14+**，并将 **ripgrep（`rg`）** 加入 PATH 以运行 Fast Context 测试；代码无需安装 npm 依赖。Unix 的 SQLite 集成测试还需要 `/usr/bin/sqlite3`。`npm run package` 支持 Windows（内置 PowerShell `Compress-Archive`）及安装了 `zip` 的 macOS/Linux。生成的包只包含插件源码、说明和许可证，不包含测试、用户配置或运行记录。
 
 ```bash
 npm test          # 运行测试
