@@ -1,8 +1,8 @@
-# Devin Fusion BYOK — Windows 适配 Fork（Saito）
+# Devin Fusion BYOK — Windows 适配 Fork
 
-**这是面向 Windows Devin Local 的适配与维护分支。** 重点修复 Windows 下的运行路径、上下文统计、PowerShell Goal 报告和 VSIX 打包，并持续维护 BYOK 接口兼容性。主要开发与实际 Devin 验收环境是 Windows。
+面向 **Windows Devin Local** 的适配与维护分支，其它平台不完全适配。
 
-基于 [kuobibulaien/devin-fusion-byok](https://github.com/kuobibulaien/devin-fusion-byok) 的 `v0.3.42`，当前版本 **0.3.45**。本 Fork 独立维护，保留原项目与第三方组件的 MIT 许可证及版权声明；更新检查使用 [本仓库 Releases](https://github.com/Saito-Sakuya/devin-fusion-byok/releases)。
+基于 [kuobibulaien/devin-fusion-byok](https://github.com/kuobibulaien/devin-fusion-byok) 的 `v0.3.42`，当前版本 **0.3.46**。保留原项目与第三方组件的 MIT 许可证及版权声明；更新检查使用 [本仓库 Releases](https://github.com/Saito-Sakuya/devin-fusion-byok/releases)。
 
 把自己的模型 API 接入 Devin Local 的原生模型列表，支持 OpenAI Responses、Chat Completions 和 Anthropic Messages。可以单独选择第三方模型，也可以保存 Lead + Sidekick 的 Fusion 预设。需要正常登录的 Devin 账号及其已有权限。
 
@@ -18,8 +18,6 @@
 | Windows VSIX 打包 | 使用 PowerShell Compress-Archive，支持临时目录与仓库位于不同磁盘；CI 验证测试和打包 |
 | 独立后台的网络代理 | 读取 Devin 的代理配置，使后台请求使用已配置的代理；保留有界重试与取消行为 |
 
-Linux 保留自动化测试与打包兼容性；macOS 保留已有代码路径，其应用重启、一键更新等平台操作需在 macOS 上验收。Windows 的真实验证范围详见下方表格；后续维护以 Windows 使用问题为重点。
-
 ## 安装与升级
 
 1. 在 [Releases](https://github.com/Saito-Sakuya/devin-fusion-byok/releases) 下载 `devin-fusion-byok-<版本>.vsix`。
@@ -28,7 +26,7 @@ Linux 保留自动化测试与打包兼容性；macOS 保留已有代码路径�
 
 扩展身份仍为 `local.devin-fusion-byok`，升级沿用已有供应商与预设配置。运行中的窗口可能仍加载旧版代码；安装 VSIX 后需要重载才能启用新的 Goal 和上下文界面。
 
-设置页支持检查新版本。一键下载、校验、安装和“重启 Devin”目前仅实现了 **macOS**；Windows/Linux 请使用上面的 VSIX 安装和重载步骤。完整应用重启请等任务结束后进行。
+设置页可检查新版本；Windows 需手动安装 VSIX 并重载窗口。
 
 ## 接入模型与预设
 
@@ -73,7 +71,7 @@ Anthropic **不自动拼接 `/v1`**。供应商将接口放在 `/v1` 下时，�
 
 ## 功能与验证范围
 
-2026-10-11 的核查使用了 Windows 上当前安装的 Devin、合成测试数据和隔离会话。Linux 的自动化测试与打包由 CI 验证；macOS 应用操作仍需在 macOS 上验收。
+2026-10-11 的核查使用了 Windows 上当前安装的 Devin、合成测试数据和隔离会话。
 
 | 功能 | 入口与当前验证 |
 | --- | --- |
@@ -87,7 +85,7 @@ Anthropic **不自动拼接 `/v1`**。供应商将接口放在 `/v1` 下时，�
 | 自动重试与待办继续 | **设置** 页，默认关闭；断线、限流、取消和防重复输出经过本机故障测试 |
 | 模型筛选与默认预设 | **设置** 页；保存、角色筛选、官方模型隐藏及恢复有回归测试 |
 | 停用与恢复 | 命令面板 **停用并恢复连接**；设置恢复、卸载路径及保留用户后续修改有回归测试 |
-| 更新 | **设置 → 插件更新**；版本、来源和包身份校验有测试，一键安装/应用重启仅支持 macOS |
+| 更新 | **设置 → 插件更新**；检查新版，Windows 手动安装 VSIX 并重载 |
 
 这些检查分别验证了协议、接口和真实 CLI 流程。Goal 在编辑器界面中的完整交互仍标为 Beta；测试通过也不能保证每个供应商或未来 Devin 版本都兼容。
 
@@ -140,7 +138,7 @@ Anthropic **不自动拼接 `/v1`**。供应商将接口放在 `/v1` 下时，�
 
 在 **Fast Context** 页选择项目，复制提示词给目标 Harness，或复制配置 JSON 合并进现有 MCP 配置。也可运行 **Fusion BYOK：Fast Context MCP 接入配置**。生成的命令和路径随安装位置变化，升级后需重新复制。插件只生成配置，目标 Harness 负责加载和停止 MCP。
 
-需要独立 **Node.js 22.16+（推荐 24 LTS）** 和 **ripgrep**。Windows/Linux 请确保 `node`、`rg` 在 PATH 中；macOS 还支持查找 Devin 自带的 ripgrep。可以用 `FUSION_FAST_CONTEXT_RG` 指定 `rg` 的绝对路径。
+需要独立 **Node.js 22.16+（推荐 24 LTS）** 和 **ripgrep**，确保 `node`、`rg` 在 PATH 中。可用 `FUSION_FAST_CONTEXT_RG` 指定 `rg` 的绝对路径。
 
 服务提供 `fast_context_search` 与 `fast_context_status`。启动时通过 `--root <项目绝对路径>` 限定目录，可用 `--exclude <pattern>` 排除目录；搜索只读，每次总时限 120 秒，一个进程同一时间接受一次搜索，支持取消。默认最多 3,000 个文件、8 MiB 文本、每文件 512 KiB、20 万行，达到限制会返回 `partial`。
 
@@ -171,7 +169,7 @@ Anthropic **不自动拼接 `/v1`**。供应商将接口放在 `/v1` 下时，�
 
 ## 开发与验收
 
-使用 Node.js **24.14+**，安装 `rg`；无需 npm 依赖或系统 SQLite CLI。Windows 用 PowerShell `Compress-Archive` 打包，macOS/Linux 需要 `zip`。
+使用 Node.js **24.14+**，安装 `rg`；无需 npm 依赖或系统 SQLite CLI。Windows 用 PowerShell `Compress-Archive` 打包。
 
 ```sh
 npm test
@@ -179,7 +177,7 @@ npm run package
 npm run mcp:fast-context -- --root /absolute/project
 ```
 
-测试默认使用合成数据与本机 HTTP/代理服务。GitHub Actions 在 Windows/Linux 上运行测试和打包；平台限定的 macOS 重启测试按条件跳过。
+测试默认使用合成数据与本机 HTTP/代理服务。CI 验证测试和打包；平台限定测试按条件跳过。
 
 在有 Devin 的机器上设置 `BYOK_TEST_DEVIN_APP_ROOT` 为 **包含 package.json、extensions、out 的 resources/app 绝对目录**，再运行 `npm test`，即可额外校验实际模型选择器和 ACP 解析器。例如 Windows 使用 `$env:BYOK_TEST_DEVIN_APP_ROOT = 'C:/path/to/Devin/resources/app'`；该检查只读应用文件。
 

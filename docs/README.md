@@ -12,8 +12,8 @@ These contracts describe the additions to the upstream v0.3.42 plugin.
 
 Run `npm test` with Node.js 24.14+ and build with `npm run package`. Tests use
 synthetic data and local services by default. SQLite fixtures use node:sqlite
-on all supported platforms. Unix mode assertions run only on Unix; macOS
-restart tests have explicit platform prerequisites. Set BYOK_TEST_DEVIN_APP_ROOT
+with the built-in runtime. Platform-specific tests have explicit prerequisites.
+Set BYOK_TEST_DEVIN_APP_ROOT
 to an installed resources/app directory to verify native picker and ACP code.
 Tests requiring a live service stay opt-in. A fixture pass is not evidence of
 remote provider availability; real CLI verification also does not imply full
