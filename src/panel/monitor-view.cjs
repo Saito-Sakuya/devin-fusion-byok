@@ -1,7 +1,7 @@
 'use strict';
 // Columns marked "extra" stay in the DOM but are hidden until "显示全部指标" is checked.
 const COLUMNS = [['开始时间'], ['模型／档位'], ['状态'], ['用量', true], ['首响应 s'], ['输出 TPS'], ['输入'], ['输出'], ['缓存命中', true], ['推理', true],
-  ['首输出 s', true], ['正文首字 s', true], ['正文 TPS', true], ['请求吞吐 TPS', true], ['总耗时 s'], ['会话关联', true]];
+  ['首输出 s', true], ['正文首字 s', true], ['正文 TPS', true], ['请求吞吐 TPS', true], ['总耗时 s'], ['会话关联', true], ['请求服务等级', true], ['实际服务等级', true]];
 function monitorMarkup() {
   const head = COLUMNS.map(([label, extra]) => `<th${extra ? ' class="extra"' : ''}>${label}</th>`).join('');
   return `<div id="usage-monitor"><div class="monitor-controls"><select id="monitor-session" aria-label="选择会话"><option value="all">全部会话</option></select><button id="monitor-refresh" class="secondary" type="button">刷新</button><span class="spacer"></span><label class="toggle hint"><input id="monitor-detail" type="checkbox">显示全部指标</label></div><p id="monitor-status" class="warn mb" role="status">正在读取…</p><div id="monitor-summary" class="tiles"></div><div class="monitor-table-wrap"><table class="monitor-table"><thead><tr>${head}</tr></thead><tbody id="monitor-requests"></tbody></table></div></div>`;
@@ -45,7 +45,7 @@ function monitorScript() {
       }
       for (const r of selected.records) {
         const row = document.createElement('tr');
-        const values = [r.startedAt, r.model + (r.effort ? ' / ' + r.effort : ''), stateName(r.status), usageName(r.usageState), ...FIELDS.map(k => metricFormat(k, r[k])), attribution(r.attribution)];
+        const values = [r.startedAt, r.model + (r.effort ? ' / ' + r.effort : ''), stateName(r.status), usageName(r.usageState), ...FIELDS.map(k => metricFormat(k, r[k])), attribution(r.attribution), r.serviceTierRequested || '跟随供应商', r.serviceTierActual || '未上报'];
         values.forEach((value, index) => { const cell = document.createElement('td'); if (EXTRA[index]) cell.className = 'extra'; cell.textContent = value; row.append(cell); });
         row.title = '请求 ID：' + r.id + (r.code ? ' · ' + r.code : ''); rows.append(row);
       }

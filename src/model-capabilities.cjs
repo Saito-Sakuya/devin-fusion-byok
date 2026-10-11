@@ -1,5 +1,20 @@
 'use strict';
 
+const SERVICE_TIER_OPTIONS = Object.freeze([
+  { value: '', label: '跟随供应商（默认）' },
+  { value: 'default', label: '标准（default）' },
+  { value: 'fast', label: 'Fast（fast）' },
+  { value: 'priority', label: 'Fast（priority 兼容值）' },
+]);
+
+function modelServiceTier(model, provider = {}) {
+  if (provider.apiFormat === 'anthropic') return null;
+  const value = model?.serviceTier;
+  if (value == null || value === '') return null;
+  if (!SERVICE_TIER_OPTIONS.some(option => option.value === value)) throw new Error('Invalid model service tier');
+  return value;
+}
+
 // /models commonly reports IDs only. Keep provider-specific overrides explicit;
 // use the standard GPT/o reasoning controls only for recognizable base IDs.
 function modelEfforts(model) {
@@ -21,4 +36,4 @@ function modelSupportsImages(model) {
   return true;
 }
 
-module.exports = { modelEfforts, modelSupportsImages };
+module.exports = { modelEfforts, modelSupportsImages, modelServiceTier, SERVICE_TIER_OPTIONS };

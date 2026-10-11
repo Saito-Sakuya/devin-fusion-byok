@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 const { parseFields, str, num, s, v, m } = require('./protocol/wire.cjs');
-const { modelEfforts, modelSupportsImages } = require('./model-capabilities.cjs');
+const { modelEfforts, modelSupportsImages, modelServiceTier } = require('./model-capabilities.cjs');
 
 const OWN_GROUP = 'Devin Fusion BYOK';
 const SIDEKICK_HARNESSES = ['swe-1p6', 'swe-1p5'];
@@ -484,6 +484,7 @@ function buildCatalog(config = {}, nativeModels = []) {
       const prefix = provider.name || provider.id, sourceLabel = model.label || model.id;
       const familyLabel = sourceLabel.startsWith(prefix + ' · ') ? sourceLabel : `${prefix} · ${sourceLabel}`;
       const efforts = modelEfforts(model);
+      const serviceTier = modelServiceTier(model, provider);
       for (const effort of efforts) {
         if (effort !== null && (typeof effort !== 'string' || !/^[a-z0-9_-]{1,32}$/.test(effort))) throw new Error('Invalid effort value');
         const uid = `dfbyok-${slug(provider.id)}-${slug(model.id)}-${digest([provider.id, model.id, effort]).slice(0, 16)}`;
@@ -493,6 +494,7 @@ function buildCatalog(config = {}, nativeModels = []) {
           contextWindow, maxOutputTokens, supportsImages: modelSupportsImages(model), inferenceServerUrl };
         leads.push(lead);
         routes[uid] = { uid, providerId: provider.id, model: model.id, effort, maxOutputTokens };
+        if (serviceTier) routes[uid].serviceTier = serviceTier;
       }
     }
   }

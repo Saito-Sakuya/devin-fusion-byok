@@ -8,6 +8,7 @@ These contracts describe the additions to the upstream v0.3.42 plugin.
 - [Bounded original-request retries](RETRY-CONTRACT.md)
 - [Cross-platform context request attribution](CONTEXT-CONTRACT.md)
 - [Windows and Unix Goal report transport](GOAL-REPORT-CONTRACT.md)
+- [OpenAI Fast service tiers and observed processing](SERVICE-TIER-CONTRACT.md)
 
 Run `npm test` with Node.js 24.14+ and build with `npm run package`. Tests use
 synthetic data and local services by default. SQLite fixtures use node:sqlite

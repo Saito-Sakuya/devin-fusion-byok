@@ -18,6 +18,8 @@ function contextDetails(session, monitor, catalog) {
     : monitor.sessionStatus === 'unavailable' ? '会话请求归属暂不可用' : '暂无可归属的已完成 BYOK 请求';
   const request = [{ key: 'request', label: '最近请求', value: latest ? `${latest.model || '—'} · ${state[latest.status] || latest.status || '—'}` : unavailable }];
   for (const [key, label] of [['durationMs', '请求耗时'], ['firstResponseMs', '首响应'], ['firstTextMs', '正文首字'], ['firstOutputMs', '首输出'], ['gatewayTps', '网关 TPS'], ['tps', '正文 TPS'], ['inputTokens', '输入 token'], ['outputTokens', '输出 token'], ['cachedTokens', '缓存 token'], ['reasoningTokens', '推理 token']]) request.push({ key, label, value: key.endsWith('Ms') ? seconds(latest?.[key]) : number(latest?.[key]) });
+  if (latest) request.push({ key: 'serviceTierRequested', label: '请求服务等级', value: latest.serviceTierRequested || '跟随供应商' },
+    { key: 'serviceTierActual', label: '实际服务等级', value: latest.serviceTierActual || '未上报' });
   const lines = [...rows, ...request].map(row => `${row.label}：${row.value}`);
   const tooltip = [rows[0], rows[1], ...request.slice(0, 7)].map(row => `${row.label}：${row.value}`).join('\n');
   return { percent: session?.lead ? Math.max(0, Math.min(100, session.lead.used / session.lead.size * 100)) : null, rows, request, lines, tooltip };

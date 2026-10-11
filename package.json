@@ -1,8 +1,8 @@
 {
   "name": "devin-fusion-byok",
   "displayName": "Devin Fusion BYOK (Saito Fork)",
-  "description": "Devin Fusion BYOK fork with cross-platform context metrics, Windows Goal reporting, configurable Anthropic paths and bounded provider retries.",
-  "version": "0.3.44",
+  "description": "Devin Fusion BYOK fork with OpenAI Fast service tiers, cross-platform context metrics, Windows Goal reporting and bounded provider retries.",
+  "version": "0.3.45",
   "publisher": "local",
   "license": "MIT",
   "repository": {

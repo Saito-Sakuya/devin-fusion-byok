@@ -24,12 +24,14 @@ test('monitor browser script compiles, uses text nodes, and preserves zero versu
   assert.equal(cells[1].textContent, '<img onerror=alert(1)>');
   assert.equal(cells[6].textContent, '0'); assert.equal(cells[7].textContent, '—');
   assert.equal(cells[4].textContent, '—'); assert.equal(cells[5].textContent, '—');
-  Object.assign(record, { firstResponseMs: 1234, firstOutputMs: 0, firstTextMs: 25, durationMs: 4567, gatewayTps: 1234 });
+  Object.assign(record, { firstResponseMs: 1234, firstOutputMs: 0, firstTextMs: 25, durationMs: 4567, gatewayTps: 1234,
+    serviceTierRequested: 'fast', serviceTierActual: 'default' });
   receive({ data: { type: 'monitor-state', result: { snapshot: { summary: { requests: 1, firstResponseMs: { value: 1234 }, ttftMs: { value: 0 }, textTtftMs: { value: 25 } }, records: [record], sessions: [], sessionStatus: 'ready' } } } });
   const secondsCells = byId('monitor-requests').children[0].children;
   assert.equal(secondsCells[4].textContent, '1.234'); assert.equal(secondsCells[10].textContent, '0');
   assert.equal(secondsCells[11].textContent, '0.025'); assert.equal(secondsCells[14].textContent, '4.567');
   assert.equal(secondsCells[5].textContent, '1,234');
+  assert.equal(secondsCells[16].textContent, 'fast'); assert.equal(secondsCells[17].textContent, 'default');
   const tiles = new Map(byId('monitor-summary').children.map(tile => [tile.children[1].textContent, tile.children[0].textContent]));
   assert.equal(tiles.get('平均首响应 s'), '1.234');
   assert.equal(tiles.has('平均首输出 s'), false, 'secondary metrics stay hidden until the detail toggle is on');

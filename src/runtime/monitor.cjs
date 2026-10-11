@@ -3,7 +3,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
+const { modelServiceTier } = require('../model-capabilities.cjs');
 const LIMIT = 5000;
+const reportedTier = value => ['auto', 'default', 'flex', 'scale', 'priority', 'fast', 'ultrafast'].includes(value) ? value : null;
 const token = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 const timing = value => Number.isFinite(value) && value >= 0 ? value : null;
 const identifier = value => typeof value === 'string' && value.length > 0 && value.length <= 256 && !/[\u0000-\u001f]/.test(value) ? value : null;
@@ -39,6 +41,8 @@ function semanticOutput(event, chat) {
 }
 function createTracker({ id, request, route, provider, now = () => performance.now(), startTime, startedAt = new Date().toISOString() }) {
   const start = startTime ?? now();
+  const serviceTierRequested = modelServiceTier(route, provider);
+  let serviceTierActual = null;
   let firstOutput = null, firstText = null, firstResponse = null, lastOutput = null, usage = null, complete = false;
   let hasTools = false, hasReasoning = false, terminalAt = null;
   const toolIds = new Set();
@@ -50,6 +54,12 @@ function createTracker({ id, request, route, provider, now = () => performance.n
       if (data && event.type !== 'done') firstResponse ??= elapsed;
       const choices = chat ? data?.choices || [] : [];
       const choice = choices.find(c => (c.index ?? 0) === 0);
+      // Created events can echo the requested tier before a later downgrade.
+      // Only terminal Responses objects confirm the actual processing tier.
+      const terminal = chat ? Boolean(choice?.finish_reason || data?.usage)
+        : ['response.completed', 'response.incomplete', 'response.failed'].includes(event.type);
+      const tierSource = chat ? data : data?.response;
+      if (provider.apiFormat !== 'anthropic' && terminal && tierSource && Object.hasOwn(tierSource, 'service_tier')) serviceTierActual = reportedTier(tierSource.service_tier);
       const delta = choice?.delta;
       const items = chat ? [] : data?.response?.output || (data?.item ? [data.item] : []);
       if (delta?.tool_calls?.length || items.some(item => item?.type === 'function_call') || event.type?.startsWith('response.function_call_arguments.')) hasTools = true;
@@ -74,6 +84,7 @@ function createTracker({ id, request, route, provider, now = () => performance.n
       const decodeMs = firstText !== null && terminalAt > firstText ? terminalAt - firstText : null;
       const tps = status === 'success' && !hasTools && visibleTokens > 0 && decodeMs > 0 ? visibleTokens * 1000 / decodeMs : null;
       return { schemaVersion: 3, firstResponseMs: firstResponse, id, startedAt, model: route.model, providerId: provider.id || route.providerId || '', effort: route.effort || null,
+        serviceTierRequested, serviceTierActual,
         status, code, httpStatus, inputTokens: usage?.inputTokens ?? null, outputTokens: usage?.outputTokens ?? null,
         cachedTokens: usage?.cachedTokens ?? null, reasoningTokens: usage?.reasoningTokens ?? null,
         firstOutputMs: firstOutput, firstTextMs: firstText, durationMs,
@@ -90,6 +101,7 @@ function normalize(record) {
   if (!identifier(record?.id) || !['success', 'error', 'cancelled'].includes(record.status) || !Number.isFinite(Date.parse(record.startedAt))) return null;
   const result = { id: record.id, startedAt: record.startedAt, model: identifier(record.model) || 'unknown',
     providerId: identifier(record.providerId) || '', effort: identifier(record.effort), status: record.status,
+    serviceTierRequested: reportedTier(record.serviceTierRequested), serviceTierActual: reportedTier(record.serviceTierActual),
     code: identifier(record.code), httpStatus: token(record.httpStatus) ?? 0, usageComplete: record.usageComplete === true,
     messageIds: Array.isArray(record.messageIds) ? [...new Set(record.messageIds.map(identifier).filter(Boolean))].slice(-8) : [],
     sessionId: null, attribution: 'unassigned', role: 'unknown' };

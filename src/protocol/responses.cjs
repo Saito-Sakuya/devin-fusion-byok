@@ -4,7 +4,7 @@ const { randomUUID, createHash } = require('node:crypto');
 const { frame } = require('./wire.cjs');
 const { textChunk, thinkingChunk, signatureChunk, toolChunk, stopChunk, usageChunk } = require('./chat.cjs');
 const { createTracker } = require('../runtime/monitor.cjs');
-const { modelEfforts } = require('../model-capabilities.cjs');
+const { modelEfforts, modelServiceTier } = require('../model-capabilities.cjs');
 const { isAnthropicFormat, anthropicHeaders, buildAnthropicBody, createAnthropicAdapter } = require('./anthropic.cjs');
 const MAX_SSE_BUFFER = 64 * 1024 * 1024;
 const STATE_PREFIX = 'dfbyok-responses-v1:';
@@ -228,6 +228,8 @@ function buildRequestBody(request, route, provider) {
     }
   }
   const body = { model: route.model, [chat ? 'messages' : 'input']: messages, stream: true };
+  const serviceTier = modelServiceTier(route, provider);
+  if (serviceTier) body.service_tier = serviceTier;
   if (resume) {
     body.store = false;
     body.include = ['reasoning.encrypted_content'];

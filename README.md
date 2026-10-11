@@ -1,10 +1,10 @@
 # Devin Fusion BYOK（Saito Fork）
 
-基于 [kuobibulaien/devin-fusion-byok](https://github.com/kuobibulaien/devin-fusion-byok) 的 `v0.3.42`，当前版本 **0.3.44**。本 Fork 独立维护，保留原项目与第三方组件的 MIT 许可证及版权声明；更新检查使用 [本仓库 Releases](https://github.com/Saito-Sakuya/devin-fusion-byok/releases)。
+基于 [kuobibulaien/devin-fusion-byok](https://github.com/kuobibulaien/devin-fusion-byok) 的 `v0.3.42`，当前版本 **0.3.45**。本 Fork 独立维护，保留原项目与第三方组件的 MIT 许可证及版权声明；更新检查使用 [本仓库 Releases](https://github.com/Saito-Sakuya/devin-fusion-byok/releases)。
 
 把自己的模型 API 接入 Devin Local 的原生模型列表，支持 OpenAI Responses、Chat Completions 和 Anthropic Messages。可以单独选择第三方模型，也可以保存 Lead + Sidekick 的 Fusion 预设。需要正常登录的 Devin 账号及其已有权限。
 
-本 Fork 的修复包括 Anthropic 地址与导入、工具可选参数、Responses 推理状态与缓存标识、后台代理与有限重试，以及 Windows 上下文请求统计和 Goal 报告提交。
+本 Fork 的改进包括 OpenAI Fast 服务等级、Anthropic 地址与导入、工具可选参数、Responses 推理状态与缓存标识、后台代理与有限重试，以及 Windows 上下文请求统计和 Goal 报告提交。
 
 ## 安装与升级
 
@@ -40,6 +40,23 @@ Anthropic **不自动拼接 `/v1`**。供应商将接口放在 `/v1` 下时，�
 
 保存影响模型列表的变更后，插件会尝试新建对话刷新列表；连续变更可能等待约 65 秒的 CLI 缓存过期。官方候选模型取决于账号、原生目录和角色设置；预设失效时保留定义供修正。插件不会提升账号权限。
 
+## OpenAI Fast 模式
+
+在 **模型 → 点击模型名称／编辑 → 服务等级 / Fast 模式** 中设置。支持 OpenAI Responses 和 Chat Completions；每个供应商下的模型独立保存，作为 Lead、Sidekick 或子代理调用时使用同一配置，思考档位保持独立。
+
+| 选项 | 发给供应商的请求字段 |
+| --- | --- |
+| 跟随供应商（默认） | 不发送 `service_tier`，保留供应商默认行为 |
+| 标准（default） | `"service_tier": "default"` |
+| Fast（fast） | `"service_tier": "fast"` |
+| Fast（priority 兼容值） | `"service_tier": "priority"` |
+
+[OpenAI 官方文档](https://developers.openai.com/api/docs/guides/fast-mode)确认 `fast` 与 `priority` 可请求 Fast 服务。仅支持旧枚举的中转站可选择 `priority`。Fast 通常比标准服务收费更高，必须由供应商和所选模型支持；模型列表不会自动开启 Fast。此功能使用配置的 BYOK 接口及其计费，不会获取 ChatGPT/Codex 订阅权益。
+
+**上下文 → 最近请求** 或 **用量 → 显示全部指标** 显示请求等级和实际等级。实际等级仅使用供应商完成事件的上报值；例如请求 `fast`、实际 `default` 表示供应商报告使用了标准服务，未上报则显示“未上报”。字段透传已经过本机 HTTP 测试，真实供应商的 Fast 权限、加速幅度与账单需要以该供应商为准。
+
+设置从该模型下一次 BYOK 请求生效；已发出的请求保持原参数，网络重试也保持原服务等级。供应商拒绝字段时直接报告错误，不自动改成其它等级；请改用兼容值或恢复默认。切换 Fast 不改变模型／预设标识、思考档位、工具参数、推理状态或缓存标识。Anthropic Messages 不发送该 OpenAI 字段。
+
 ## 功能与验证范围
 
 2026-10-11 的核查使用了 Windows 上当前安装的 Devin、合成测试数据和隔离会话。Linux 的自动化测试与打包由 CI 验证；macOS 应用操作仍需在 macOS 上验收。
@@ -47,6 +64,7 @@ Anthropic **不自动拼接 `/v1`**。供应商将接口放在 `/v1` 下时，�
 | 功能 | 入口与当前验证 |
 | --- | --- |
 | 供应商与模型 | **模型** 页；导入、手动添加、编辑、启停和删除有回归测试；三种协议有本机 HTTP 测试 |
+| OpenAI Fast | **模型 → 编辑 → 服务等级 / Fast 模式**；两种 OpenAI API 的配置保存、HTTP 字段、重试和实际等级显示有本机测试；未宣称供应商实际加速 |
 | Fusion 预设 | **预设** 页；分配与配置保存有回归测试，当前 Windows Devin 的实际模型选择器校验通过 |
 | 上下文与最近请求 | 状态栏 **上下文**；修复 Windows 路径和 SQLite 读取，已用本机真实会话数据库验证请求字段 |
 | 请求用量 | **用量** 页；统计耗时与供应商返回的 token，按可靠身份关联会话，无法归属的请求单独保留 |

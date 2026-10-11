@@ -1,5 +1,5 @@
 'use strict';
-const { modelSupportsImages } = require('../model-capabilities.cjs');
+const { modelSupportsImages, SERVICE_TIER_OPTIONS } = require('../model-capabilities.cjs');
 const { normalizeBaseUrlPath } = require('./base-url.cjs');
 const { monitorMarkup, monitorScript } = require('./monitor-view.cjs');
 const { updateMarkup, updateScript } = require('./update-view.cjs');
@@ -207,12 +207,12 @@ function renderPanel({ nonce, cspSource }) {
   </main>
   <div id="status" class="toast" role="status" aria-live="polite" hidden></div>
   <dialog id="editor-dialog" aria-labelledby="dialog-title"></dialog>
-  <script nonce="${safeNonce}">const vscode = acquireVsCodeApi(); (${panelClient.toString()})(${modelSupportsImages.toString()}, vscode, ${normalizeBaseUrlPath.toString()}); ${monitorScript()} ${updateScript()} ${fastContextScript()}</script>
+  <script nonce="${safeNonce}">const vscode = acquireVsCodeApi(); (${panelClient.toString()})(${modelSupportsImages.toString()}, vscode, ${normalizeBaseUrlPath.toString()}, ${JSON.stringify(SERVICE_TIER_OPTIONS)}); ${monitorScript()} ${updateScript()} ${fastContextScript()}</script>
 </body>
 </html>`;
 }
 
-function panelClient(modelSupportsImages, vscode, normalizeBaseUrlPath) {
+function panelClient(modelSupportsImages, vscode, normalizeBaseUrlPath, serviceTierOptions) {
   'use strict';
   const byId = id => document.getElementById(id);
   const pending = new Map();
@@ -473,6 +473,7 @@ function panelClient(modelSupportsImages, vscode, normalizeBaseUrlPath) {
         element('div', { class: 'row-main' },
           element('button', { type: 'button', class: 'link-title', text: name, 'aria-label': '编辑模型 ' + name, onclick: () => modelDialog(provider, model) }),
           name !== model.id ? element('span', { class: 'row-sub mono', text: model.id }) : null),
+        provider.apiFormat !== 'anthropic' && model.serviceTier ? element('span', { class: 'hint', text: ['fast', 'priority'].includes(model.serviceTier) ? 'Fast · ' + model.serviceTier : '标准' }) : null,
         switchInput(model.enabled !== false, '启用模型 ' + name,
           value => run(() => request('updateModels', { providerId: provider.id, changes: [{ id: model.id, enabled: value }] })))));
     }
@@ -752,6 +753,9 @@ function panelClient(modelSupportsImages, vscode, normalizeBaseUrlPath) {
     const label = input(model?.label || '', { maxlength: 160, placeholder: '留空使用模型 ID' });
     const contextWindow = input(model?.contextWindow || 272000, { type: 'number', min: 1, step: 1, required: true });
     const maxOutputTokens = input(model?.maxOutputTokens || 131072, { type: 'number', min: 1, step: 1, required: true });
+    const serviceTier = provider.apiFormat === 'anthropic' ? null : element('select', { 'aria-label': '服务等级 / Fast 模式' },
+      ...serviceTierOptions.map(option => element('option', { value: option.value, text: option.label })));
+    if (serviceTier) serviceTier.value = model?.serviceTier || '';
     const efforts = input((model?.efforts || []).join(', '), { placeholder: 'low, medium, high', spellcheck: 'false' });
     const effortMode = element('select', { 'aria-label': '思考档位' },
       element('option', { value: 'auto', text: '自动' }),
@@ -762,6 +766,7 @@ function panelClient(modelSupportsImages, vscode, normalizeBaseUrlPath) {
     manual.hidden = effortMode.value !== 'manual';
     effortMode.addEventListener('change', () => { manual.hidden = effortMode.value !== 'manual'; });
     form.append(field('模型 ID', id), field('显示名称', label),
+      serviceTier ? field('服务等级 / Fast 模式', serviceTier, 'Fast 可能加价，需供应商与模型支持；priority 是兼容值。跟随供应商时不传字段；标准显式请求 default。思考档位保持独立。') : null,
       element('details', { class: 'fold', open: effortMode.value === 'manual' }, element('summary', { text: '高级' }),
         element('div', { class: 'field-grid' }, field('上下文（tokens）', contextWindow), field('最大输出（tokens）', maxOutputTokens)),
         field('思考档位', effortMode, '自动：GPT/o 系列与较新的 Claude Opus/Sonnet 提供 Low、Medium、High、XHigh、Max，能否生效取决于供应商。'), manual));
@@ -770,6 +775,7 @@ function panelClient(modelSupportsImages, vscode, normalizeBaseUrlPath) {
     finishDialog(dialog, form, model ? '保存' : '添加', () => {
       const saved = { id: id.value.trim(), label: label.value.trim() || id.value.trim(),
         contextWindow: Number(contextWindow.value), maxOutputTokens: Number(maxOutputTokens.value), effortMode: effortMode.value,
+        ...(serviceTier ? { serviceTier: serviceTier.value } : {}),
         efforts: effortMode.value === 'auto' ? [] : [...new Set(efforts.value.split(/[,，\s]+/).map(value => value.trim()).filter(Boolean))] };
       if (model) return request('updateModels', { providerId: provider.id, changes: [{ ...saved, supportsImages: true }] });
       return request('addModel', { providerId: provider.id, model: { ...saved, enabled: true } });

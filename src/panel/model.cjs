@@ -2,7 +2,7 @@
 const { randomUUID } = require('node:crypto');
 const { buildCatalog, buildRoleLists, refKey, presetUid, normalizeFusionConfig } = require('../catalog.cjs');
 const { discover: discoverModels } = require('../config.cjs');
-const { modelSupportsImages } = require('../model-capabilities.cjs');
+const { modelSupportsImages, modelServiceTier, SERVICE_TIER_OPTIONS } = require('../model-capabilities.cjs');
 const { normalizeBaseUrlPath } = require('./base-url.cjs');
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key);
 class PanelInputError extends Error {}
@@ -20,7 +20,7 @@ function baseUrl(value, apiFormat) {
 function boolean(value, label) { if (typeof value !== 'boolean') fail(label + '无效。'); return value; }
 function number(value, label) { if (!Number.isSafeInteger(value) || value < 1 || value > 2147483647) fail(label + '必须是正整数。'); return value; }
 function providerAt(config, id) { return config.providers.find(provider => provider.id === id) || fail('该供应商已不存在，请刷新面板。'); }
-function modelPatch(input, previous) {
+function modelPatch(input, previous, provider) {
   const model = { ...previous };
   if (own(input, 'label')) model.label = text(input.label, '模型名称');
   if (own(input, 'enabled')) model.enabled = boolean(input.enabled, '启用状态');
@@ -34,6 +34,12 @@ function modelPatch(input, previous) {
   if (own(input, 'effortMode')) {
     if (!['auto', 'manual', 'none'].includes(input.effortMode)) fail('推理档位来源无效。');
     model.effortMode = input.effortMode;
+  }
+  if (own(input, 'serviceTier')) {
+    if (!SERVICE_TIER_OPTIONS.some(option => option.value === input.serviceTier)) fail('服务等级无效。');
+    if (provider.apiFormat === 'anthropic' && input.serviceTier !== '') fail('Fast 服务等级仅支持 OpenAI Responses 和 Chat Completions。');
+    if (input.serviceTier === '') delete model.serviceTier;
+    else model.serviceTier = input.serviceTier;
   }
   if (model.maxOutputTokens > model.contextWindow) fail('最大输出长度不能超过上下文长度。');
   return model;
@@ -69,6 +75,7 @@ function publicState(config, selectedFusionUid, nativeModels = [], autoContinueS
       apiFormat: provider.apiFormat, enabled: provider.enabled !== false, keyConfigured: !!provider.apiKey,
       models: provider.models.map(model => ({ id: model.id, label: model.label || model.id, enabled: model.enabled !== false,
         efforts: model.efforts || [], effortMode: model.effortMode || (model.efforts?.length ? 'manual' : 'auto'),
+        serviceTier: modelServiceTier(model, provider) || '',
         contextWindow: model.contextWindow || 272000, maxOutputTokens: model.maxOutputTokens || Math.min(131072, model.contextWindow || 272000),
         supportsImages: modelSupportsImages(model) })) })),
     sidekicks: catalog.sidekicks.map(sidekick => sidekick.native
@@ -189,7 +196,7 @@ function createManager({ read, write, discover = discoverModels, afterChange = a
         for (const change of payload.changes || []) {
           const index = provider.models.findIndex(m => m.id === change?.id);
           if (index < 0) fail('该模型已不存在，请刷新面板。');
-          provider.models[index] = modelPatch(change, provider.models[index]);
+          provider.models[index] = modelPatch(change, provider.models[index], provider);
         }
         provider.models = provider.models.filter(m => !(payload.removeIds || []).includes(m.id));
         break;
@@ -198,7 +205,7 @@ function createManager({ read, write, discover = discoverModels, afterChange = a
         const provider = providerAt(config, payload.providerId), input = payload.model;
         const id = text(input?.id, '模型 ID');
         if (provider.models.some(m => m.id === id)) fail('该模型已经在列表中。');
-        provider.models.push(modelPatch(input, { id, label: id, enabled: true, efforts: [], contextWindow: 272000, maxOutputTokens: 131072, source: 'manual' }));
+        provider.models.push(modelPatch(input, { id, label: id, enabled: true, efforts: [], contextWindow: 272000, maxOutputTokens: 131072, source: 'manual' }, provider));
         break;
       }
       case 'setSidekicks': {

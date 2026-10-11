@@ -62,7 +62,7 @@ async function probe(handler, options = {}) {
     bridge = http.createServer((req, res) => {
       completion = serveChat({ request: { systemPrompt: secret, messages: [{ role: 'user', content: secret }] },
         provider: { id: 'fixture', apiKey: secret, baseUrl: origin, apiFormat: options.apiFormat || 'openai-responses' },
-        route: { model: 'gpt-6.1-sol', effort: 'low' }, res, signal: abort.signal, timeouts: options.timeouts,
+        route: { model: 'gpt-6.1-sol', effort: 'low', ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}) }, res, signal: abort.signal, timeouts: options.timeouts,
         retry: { enabled: true, baseDelayMs: 2, maxDelayMs: 8, budgetMs: 3000, ...options.retry },
         log: value => {
           logs.push(value);
@@ -91,10 +91,11 @@ async function probe(handler, options = {}) {
 }
 
 test('503 then 502 then success resends identical request bytes with one native completion', async () => {
-  const r = await probe((res, attempt) => attempt < 3 ? res.writeHead(attempt === 1 ? 503 : 502).end() : success(res));
+  const r = await probe((res, attempt) => attempt < 3 ? res.writeHead(attempt === 1 ? 503 : 502).end() : success(res), { serviceTier: 'priority' });
   assert.equal(r.received.length, 3);
   assert.equal(new Set(r.received).size, 1);
   assert.equal(JSON.parse(r.received[0]).store, false);
+  assert.equal(JSON.parse(r.received[0]).service_tier, 'priority');
   assert.match(JSON.parse(r.received[0]).prompt_cache_key, /^dfbyok-/);
   assert.equal(r.native.text, 'RETRY_OK');
   assert.deepEqual(r.native.stops, [2]);
@@ -103,6 +104,15 @@ test('503 then 502 then success resends identical request bytes with one native 
   assert.equal(r.logs.at(-1).attempts, 3); assert.equal(r.logs.at(-1).retries, 2);
   assert.equal(r.records[0].status, 'success');
   assert.ok(r.records[0].durationMs >= r.times[2] - r.times[0]);
+});
+
+test('an unsupported Fast parameter is reported once without silently changing the requested tier', async () => {
+  const r = await probe(res => res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({
+    error: { type: 'invalid_request_error', code: 'invalid_parameter', param: 'service_tier' },
+  })), { serviceTier: 'fast' });
+  assert.equal(r.received.length, 1); assert.equal(JSON.parse(r.received[0]).service_tier, 'fast');
+  assert.equal(r.records[0].status, 'error'); assert.equal(r.records[0].serviceTierActual, null);
+  assert.equal(r.logs.some(log => log.event === 'chat-retry'), false);
 });
 
 test('a dropped socket before headers is retried and succeeds', async () => {

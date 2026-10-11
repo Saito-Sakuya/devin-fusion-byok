@@ -49,6 +49,37 @@ const state = () => ({ enabled: true, providers: [{ id: 'cpa', name: 'CPA', base
     contextWindow: 200000, maxOutputTokens: 32768 }] }], nativeModels: [], roleLists: { lead: [], sidekick: [] },
   fusionPresets: [], autoContinueStatus: 'unavailable' });
 
+for (const apiFormat of ['openai', 'openai-responses']) {
+  test(apiFormat + ' model dialog restores and submits the service tier with its billing and compatibility hint', async () => {
+    const { byId, posts, receive } = panel(), saved = state();
+    saved.providers[0].apiFormat = apiFormat; saved.providers[0].models[0].serviceTier = 'priority';
+    receive({ data: { type: 'state', state: saved } });
+    collect(byId('models'), 'button', node => String(node.attributes['aria-label'] || '').startsWith('编辑模型'))[0].listeners.click();
+    const dialog = byId('editor-dialog'), select = collect(dialog, 'select', node => node.attributes['aria-label'] === '服务等级 / Fast 模式')[0];
+    assert.equal(select.value, 'priority');
+    assert.deepEqual(select.children.map(option => option.attributes.value), ['', 'default', 'fast', 'priority']);
+    const hint = collect(dialog, 'span', node => node.className === 'hint').map(node => node.textContent).find(text => text.includes('Fast'));
+    assert.match(hint, /加价/); assert.match(hint, /供应商/); assert.match(hint, /priority/);
+    select.value = 'fast';
+    const saving = collect(dialog, 'form')[0].listeners.submit({ preventDefault() {} });
+    const message = posts.find(message => message.type === 'updateModels');
+    assert.equal(message.payload.changes[0].serviceTier, 'fast');
+    assert.equal(message.payload.changes[0].maxOutputTokens, 32768);
+    receive({ data: { type: 'result', id: message.id, ok: true } }); await saving;
+  });
+}
+
+test('new models follow the provider tier and Anthropic has no OpenAI service-tier control', () => {
+  for (const apiFormat of ['openai', 'anthropic']) {
+    const { byId, receive } = panel(), saved = state(); saved.providers[0].apiFormat = apiFormat;
+    receive({ data: { type: 'state', state: saved } });
+    collect(byId('models'), 'button', node => node.textContent === '手动添加')[0].listeners.click();
+    const controls = collect(byId('editor-dialog'), 'select', node => node.attributes['aria-label'] === '服务等级 / Fast 模式');
+    if (apiFormat === 'anthropic') assert.equal(controls.length, 0);
+    else assert.equal(controls[0].value, '');
+  }
+});
+
 test('the add-model dialog renders the 131072-token output default and keeps saved values', () => {
   const { byId, posts, receive } = panel();
   receive({ data: { type: 'state', state: state() } });
