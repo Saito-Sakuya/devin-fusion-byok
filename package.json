@@ -2,7 +2,7 @@
   "name": "devin-fusion-byok",
   "displayName": "Devin Fusion BYOK — Windows Fork",
   "description": "Windows adaptation of Devin Fusion BYOK with OpenAI Fast, context metrics, PowerShell Goal reporting and provider retries. Other platforms are not fully supported.",
-  "version": "0.3.46",
+  "version": "0.3.48",
   "publisher": "local",
   "license": "MIT",
   "repository": {

@@ -10,6 +10,7 @@ const { installLsInjection } = require('./runtime/ls-injection.cjs');
 const { createLsBridge } = require('./runtime/bridge.cjs');
 const { runtimeIdentity, controlFile, PORT, MANAGEMENT_PROTOCOL } = require('./runtime/backend.cjs');
 const { readReceipt, remember, saveReceipt, valueAt, restoreObject, permitted } = require('./lifecycle/owned-settings.cjs');
+const { configureNativeDirectEnv } = require('./lifecycle/native-direct-env.cjs');
 const { readNativeModels } = require('./runtime/native-models.cjs');
 const { installAutoContinue } = require('./runtime/auto-continue.cjs');
 const { installGoalContinue } = require('./runtime/goal-continue.cjs');
@@ -261,14 +262,24 @@ async function activate(context) {
     if (changed && !activationDisposed) try { void management?.publish()?.catch(() => {}); } catch {}
   };
   let enableQueue = Promise.resolve();
-  const ensureEnabled = () => {
+  const ensureEnabled = (refreshProxy = false) => {
     const operation = enableQueue.then(() => {
-      if (activationDisposed || config().enabled === false || connection) return;
+      if (activationDisposed || config().enabled === false) return;
+      if (connection) return refreshProxy ? reconcileNativeProxy() : undefined;
       return enable();
     });
     enableQueue = operation.catch(() => {});
     return operation;
   };
+  async function reconcileNativeProxy() {
+    const settings = vscode.workspace.getConfiguration('devin.acp');
+    const existing = globalSetting(settings, 'agentEnv');
+    const receipt = readReceipt(root, context.extensionPath);
+    const nextEnv = configureNativeDirectEnv({ agentEnv: existing, receipt, platform: process.platform,
+      proxySupport: vscode.workspace.getConfiguration('http').get('proxySupport') });
+    saveReceipt(receipt);
+    if (JSON.stringify(existing) !== JSON.stringify(nextEnv)) await settings.update('agentEnv', nextEnv, vscode.ConfigurationTarget.Global);
+  }
   async function enable() {
     const generation = ++activationGeneration;
     runtimeWaitAbort?.abort();
@@ -304,13 +315,15 @@ async function activate(context) {
         ? saved[key] == null ? { exists: false } : { exists: true, value: saved[key] } : undefined;
       remember(receipt, ['devin.acp.agentEnv', 'devin-cli', key], current, value, legacy);
     }
+    const nextEnv = configureNativeDirectEnv({ agentEnv: { ...existing, 'devin-cli': { ...previous, ...desired } }, receipt,
+      platform: process.platform, proxySupport: vscode.workspace.getConfiguration('http').get('proxySupport') });
     // Commit recovery information before changing the user's settings.
     saveReceipt(receipt);
     await context.globalState.update('savedEnv', saved);
     await context.globalState.update('managedEnv', desired);
     const current = config();
     if (current.inferenceServerUrl !== desired.WINDSURF_API_SERVER_URL) { current.inferenceServerUrl = desired.WINDSURF_API_SERVER_URL; writeConfig(configFile, current); }
-    if (Object.keys(managed).some(k => !(k in desired)) || Object.entries(desired).some(([k, v]) => previous[k] !== v)) await settings.update('agentEnv', { ...existing, 'devin-cli': { ...previous, ...desired } }, vscode.ConfigurationTarget.Global);
+    if (JSON.stringify(existing) !== JSON.stringify(nextEnv)) await settings.update('agentEnv', nextEnv, vscode.ConfigurationTarget.Global);
     if (generation !== activationGeneration || config().enabled === false) return;
     await reconcilePreference();
     if (generation !== activationGeneration || config().enabled === false) return;
@@ -514,6 +527,9 @@ async function activate(context) {
   fs.watchFile(configFile, { interval: 500, persistent: false }, onConfigChanged);
   context.subscriptions.push({ dispose: () => fs.unwatchFile(configFile, onConfigChanged) });
   const preferenceSubscription = vscode.workspace.onDidChangeConfiguration?.(event => {
+    if (event?.affectsConfiguration?.('http.proxySupport')) {
+      return ensureEnabled(true).catch(error => { const safe = safeError(error); if (safe.code !== 'cancelled') log('error', { code: safe.code }); });
+    }
     if (typeof event?.affectsConfiguration === 'function' && !event.affectsConfiguration('devin.acp.agentPreferences')) return;
     return reconcilePreference();
   });

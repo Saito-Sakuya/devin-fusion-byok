@@ -22,6 +22,7 @@ function fixture(t, initial = {}) {
   const globals = { agentEnv: { 'devin-cli': { KEEP: 'user-value' } }, agentPreferences: { 'devin-cli': { model: 'native-max', effort: 'high' } }, ...initial.globals };
   const state = new Map(Object.entries(initial.state || {})), commands = new Map(), logs = [], notices = [], watchers = [], preferenceListeners = [];
   const updates = [], bridges = [];
+  const httpSettings = { proxySupport: initial.proxySupport };
   let disposed = 0, installed = 0, managerOptions;
   const settings = {
     inspect: key => ({ globalValue: globals[key] }),
@@ -30,7 +31,7 @@ function fixture(t, initial = {}) {
   };
   const vscode = {
     ConfigurationTarget: { Global: 1 },
-    workspace: { getConfiguration: () => settings,
+    workspace: { getConfiguration: section => section === 'http' ? { get: key => httpSettings[key] } : settings,
       onDidChangeConfiguration: fn => { preferenceListeners.push(fn); return { dispose() {} }; } },
     extensions: { getExtension: () => ({ extensionPath: '/native', packageJSON: { main: 'main.js', version: 'test' } }) },
     commands: { registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() {} }; } },
@@ -74,7 +75,8 @@ function fixture(t, initial = {}) {
     } },
   };
   const module = { exports: {} };
-  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { module, exports: module.exports, process,
+  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { module, exports: module.exports,
+    process: initial.platform ? { ...process, platform: initial.platform } : process,
     AbortController, AbortSignal, setInterval, clearInterval, setTimeout: (fn, _ms) => setTimeout(fn, 0), clearTimeout,
     fetch: (...args) => fetchImpl(...args),
     require: name => Object.hasOwn(overrides, name) ? overrides[name] : realRequire(name),
@@ -83,7 +85,7 @@ function fixture(t, initial = {}) {
     globalState: { get: (key, fallback) => state.has(key) ? state.get(key) : fallback, update: async (key, value) => value === undefined ? state.delete(key) : state.set(key, value) } };
   t.after(async () => { await module.exports.deactivate(); context.subscriptions.forEach(value => value.dispose()); });
   return { ...module.exports, context, root, configFile, globals, state, commands, logs, notices, watchers, updates, bridges,
-    preferenceListeners, managerOptions: () => managerOptions, spawns,
+    preferenceListeners, httpSettings, managerOptions: () => managerOptions, spawns,
     setFetch: impl => { fetchImpl = impl; },
     setNativeRead: impl => { nativeRead = impl; },
     gateInjection: () => { let release; injectionGate = new Promise(resolve => { release = resolve; }); return release; },
@@ -99,6 +101,26 @@ test('normal window unload restores its LS hook without reverting shared CLI env
   assert.equal(f.globals.agentEnv['devin-cli'].WINDSURF_API_SERVER_URL, 'http://127.0.0.1:39842');
   assert.equal(f.globals.agentEnv['devin-cli'].KEEP, 'user-value');
   assert.ok(!f.logs.some(line => line.includes('error')));
+});
+
+test('Windows proxy off covers both ACP agents, reconciles changes, and restores owned values on disable', async t => {
+  const original = { 'devin-cli': { KEEP: 'main', HTTPS_PROXY: 'http://original' }, 'summary-agent': { KEEP: 'summary' } };
+  const f = fixture(t, { platform: 'win32', proxySupport: 'off', globals: { agentEnv: original } });
+  await f.activate(f.context);
+  assert.equal(f.globals.agentEnv['devin-cli'].HTTPS_PROXY, ' ');
+  assert.equal(f.globals.agentEnv['summary-agent'].HTTP_PROXY, ' ');
+  assert.equal(f.globals.agentEnv['summary-agent'].NO_PROXY, '*');
+  assert.equal(f.globals.agentEnv['summary-agent'].WINDSURF_API_SERVER_URL, undefined);
+  f.httpSettings.proxySupport = 'on';
+  await f.firePreference('http.proxySupport');
+  assert.equal(f.globals.agentEnv['devin-cli'].HTTPS_PROXY, 'http://original');
+  assert.equal(f.globals.agentEnv['summary-agent'].HTTP_PROXY, undefined);
+  f.httpSettings.proxySupport = 'off';
+  await f.firePreference('http.proxySupport');
+  assert.equal(f.globals.agentEnv['summary-agent'].HTTP_PROXY, ' ');
+  await f.commands.get('devinFusionByok.disable')();
+  assert.deepEqual(f.globals.agentEnv, original);
+  assert.equal(f.counts().installed, 1);
 });
 test('explicit disable restores owned env and any own Fusion selection, preserving native preference fields', async t => {
   const f = fixture(t); await f.activate(f.context);

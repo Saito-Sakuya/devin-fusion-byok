@@ -33,6 +33,9 @@ const RETRY_TRANSPORT_CODES = new Set([
 const RETRY_PROVIDER_CODES = new Set([
   'server_error', 'internal_error', 'api_error', 'overloaded_error',
   'rate_limit_error', 'rate_limit_exceeded', 'request_timeout', 'timeout',
+  // Gateways may report upstream failures inside HTTP 200 SSE. Retry only
+  // before output, within the same bounded policy; this code is not a diagnosis.
+  'upstream_error',
   'stream_read_error', 'upstream_stream_read_error', 'upstream_http2_stream_error', 'upstream_stream_truncated',
 ]);
 const PERMANENT_PROVIDER_CODES = new Set([
@@ -70,7 +73,8 @@ function retryDecision(result, policy, attempt, committed, started) {
   if (committed) return { reason: 'output_started' };
   if (result.retryAllowed === false) return { reason: 'provider_no_retry' };
   const diagnostics = result.diagnostics;
-  if (PERMANENT_PROVIDER_CODES.has(diagnostics.providerErrorCode)) return { reason: 'not_retryable' };
+  if (PERMANENT_PROVIDER_CODES.has(diagnostics.providerErrorCode) ||
+      PERMANENT_PROVIDER_CODES.has(diagnostics.providerErrorType)) return { reason: 'not_retryable' };
   const transient = result.code === 'upstream_http' ? RETRY_HTTP_STATUSES.has(result.status) :
     diagnostics.failureKind === 'provider_error' ? RETRY_PROVIDER_CODES.has(diagnostics.providerErrorCode) :
     diagnostics.failureKind === 'transport_error' ? RETRY_TRANSPORT_CODES.has(diagnostics.transportErrorCode) :
@@ -103,6 +107,7 @@ function providerFailure(event) {
     upstreamEvent: ['response.failed', 'error'].includes(event.type) ? event.type : 'error_payload',
     // Never record upstream error messages: they may contain prompts or keys.
     providerErrorCode: PROVIDER_ERROR_CODES.has(value) ? value : value ? 'unrecognized_code' : null,
+    ...(PERMANENT_PROVIDER_CODES.has(error?.type) ? { providerErrorType: error.type } : {}),
   };
   return err;
 }
@@ -493,7 +498,7 @@ async function serveChatAttempt({ id, request, route, provider, res, signal, log
   let lastUpstreamEvent = null;
   let receivedBytes = 0;
   let upstreamRequestId = null;
-  let retryAfterMs = 0, retryAllowed = true, httpErrorCode = null;
+  let retryAfterMs = 0, retryAllowed = true, httpErrorCode = null, httpErrorType = null;
   const trackedEvent = type => /^(?:response\.(?:created|in_progress|completed|incomplete|failed|output_text\.(?:delta|done)|output_item\.(?:added|done)|function_call_arguments\.(?:delta|done)|reasoning_summary_text\.delta)|error|done)$/.test(type)
     ? type : 'other';
   const record = event => { try { log(event); } catch { /* Diagnostics cannot fail a model request. */ } };
@@ -560,6 +565,7 @@ async function serveChatAttempt({ id, request, route, provider, res, signal, log
             const payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
             const code = payload?.error?.code || payload?.error?.type || payload?.code;
             if (PROVIDER_ERROR_CODES.has(code)) httpErrorCode = code;
+            if (PERMANENT_PROVIDER_CODES.has(payload?.error?.type)) httpErrorType = payload.error.type;
           }
         } catch { /* HTTP status remains authoritative if the error body is unreadable. */ }
         finally { clearTimer(); upstreamController.abort(); reader.releaseLock(); }
@@ -661,6 +667,7 @@ async function serveChatAttempt({ id, request, route, provider, res, signal, log
       failureStage, lastUpstreamEvent, receivedBytes,
       ...(upstreamRequestId ? { upstreamRequestId } : {}),
       ...(httpErrorCode ? { providerErrorCode: httpErrorCode } : {}),
+      ...(httpErrorType ? { providerErrorType: httpErrorType } : {}),
       ...(err?.diagnostics || {}),
     };
     const connectionCode = transportCode(err);
@@ -703,7 +710,7 @@ async function serveChat({ request, route, provider, res, signal, log = () => {}
   res.on('close', close);
   if (signal?.aborted) abort();
   const record = event => { try { log(event); } catch {} };
-  let metrics, result = { status: 0 }, outcome = 'error', outcomeCode = null, committed = false, attempt = 0;
+  let metrics, result = { status: 0 }, outcome = 'error', outcomeCode = null, committed = false, attempt = 0, retryStarted;
   try {
     while (!client.signal.aborted) {
       attempt++;
@@ -712,13 +719,16 @@ async function serveChat({ request, route, provider, res, signal, log = () => {}
         metrics, prepared, attempt, onOutput: () => { committed = true; } });
       if (result.aborted || client.signal.aborted) break;
       if (!result.error) { outcome = 'success'; return result; }
-      const decision = retryDecision(result, policy, attempt, committed, started);
+      // A slow first response must not consume the entire retry window before
+      // any retry can start. Later attempts and backoff still consume the window.
+      retryStarted ??= performance.now();
+      const decision = retryDecision(result, policy, attempt, committed, retryStarted);
       if (decision.delayMs !== undefined) {
         record({ event: 'chat-retry', model: route.model, requestId: id, status: result.status, code: result.code,
           attempt, nextAttempt: attempt + 1, delayMs: decision.delayMs, ...result.diagnostics });
         if (!await waitForRetry(decision.delayMs, client.signal)) break;
         // Timer scheduling can exceed the budget if the event loop is busy.
-        if (performance.now() - started < policy.budgetMs) continue;
+        if (performance.now() - retryStarted < policy.budgetMs) continue;
         decision.reason = 'retry_budget';
       }
       const reasons = { output_started: 'response output already started', provider_no_retry: 'provider disabled retries',

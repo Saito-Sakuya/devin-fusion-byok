@@ -2,7 +2,7 @@
 
 面向 **Windows Devin Local** 的适配与维护分支，其它平台不完全适配。
 
-基于 [kuobibulaien/devin-fusion-byok](https://github.com/kuobibulaien/devin-fusion-byok) 的 `v0.3.42`，当前版本 **0.3.46**。保留原项目与第三方组件的 MIT 许可证及版权声明；更新检查使用 [本仓库 Releases](https://github.com/Saito-Sakuya/devin-fusion-byok/releases)。
+基于 [kuobibulaien/devin-fusion-byok](https://github.com/kuobibulaien/devin-fusion-byok) 的 `v0.3.42`，当前版本 **0.3.48**。保留原项目与第三方组件的 MIT 许可证及版权声明；更新检查使用 [本仓库 Releases](https://github.com/Saito-Sakuya/devin-fusion-byok/releases)。
 
 把自己的模型 API 接入 Devin Local 的原生模型列表，支持 OpenAI Responses、Chat Completions 和 Anthropic Messages。可以单独选择第三方模型，也可以保存 Lead + Sidekick 的 Fusion 预设。需要正常登录的 Devin 账号及其已有权限。
 
@@ -128,7 +128,9 @@ Anthropic **不自动拼接 `/v1`**。供应商将接口放在 `/v1` 下时，�
 
 独立后台读取 Devin 用户设置的 `http.proxy`；`http.proxySupport: "off"` 关闭后台代理，未配置时继承代理环境变量。本机 ACP 与管理请求直连。修改代理后需让后台重新启动，Devin 内置 Node.js 要求 **24.14+**。后台代理支持涵盖推理及官方转发；模型发现和单独运行的 MCP 使用各自宿主的网络环境。
 
-**服务商出错时自动重试**在后台重发原请求：临时网络错误、HTTP 408/429/500/502/503/504，以及明确的临时流错误，最多追加 3 次，约等待 2、4、8 秒并加随机延迟。尊重 `Retry-After`，只在原请求开始后的 60 秒内发起重试。已输出原生响应或用户停止时结束重试；鉴权、余额、参数、格式错误直接失败。失败请求可能仍计费。
+Windows 上设置 `http.proxySupport: "off"` 后，插件同时关闭原生 Devin CLI 与摘要代理的系统代理回退。首次应用需执行 **Reload ACP Connections** 或重载窗口。仅作用于 Devin 的 ACP 进程，停用插件或重新启用代理时恢复原值；Windows 系统代理保持不变。留空代理变量仍会让原生 CLI 读取系统代理，因此受管配置使用空白占位与 `NO_PROXY=*`，这些占位不会启动代理服务。
+
+**服务商出错时自动重试**在后台重发原请求：临时网络错误、HTTP 408/429/500/502/503/504、临时流错误及网关 `upstream_error`，最多追加 3 次，约等待 2、4、8 秒并加随机延迟。尊重 `Retry-After`；重试窗口从首次失败开始计时，之后的请求与等待均计入 60 秒预算，首次长等待不会耗尽预算。已输出正文或思考内容、用户停止、供应商禁止重试时结束重试；鉴权、余额、参数、格式错误直接失败。`upstream_error` 是笼统的上游失败，有限重试不保证恢复；失败请求可能仍计费。
 
 **待办没做完时自动继续**针对原生 Plan/Todo：有未完成待办时发送 `continue`，待办没有变化就停止。Goal 拥有的会话由 Goal 控制器推进。旧版供应商“自动继续”开关兼容为后台重试，升级后需要重载窗口。
 
@@ -151,7 +153,8 @@ Anthropic **不自动拼接 `/v1`**。供应商将接口放在 `/v1` 下时，�
 | 获取模型列表失败 | 弹窗预览的 `/models` 路径、对应协议的鉴权与宿主联网；不提供列表时手动添加模型 |
 | HTTP 200 但响应类型错误 | 地址返回了网站 HTML 或其它非流式数据；核对 API 前缀和协议，尤其是需要手动填写 `/v1` 的 Anthropic 网关 |
 | `Could not connect to the provider` | 推理地址、代理、DNS 与供应商连接；开启有限重试后仍失败需检查实际连接 |
-| `Provider reported a failed response` | 供应商错误、鉴权、额度、模型及请求参数；自动重试仅处理明确的临时故障 |
+| `Provider reported a failed response` | 接口在流内报告失败；`upstream_error` 在尚未输出时有限重试，仍失败需由供应商查上游原因 |
+| `Automatic retries stopped` | `non-transient error` 为不可重试的类型，`retry time budget reached` 为重试窗口已用完，`response output already started` 为已输出后停止重发，`retry limit reached` 为尝试次数已达上限 |
 | `Provider response could not be completed` | 流未正常结束、格式不兼容或超时；已有输出时不会重发，以免重复工具执行 |
 | Remote ACP / 获取团队设置失败 | 先检查官方登录、团队权限和后台到官方服务的网络连接，BYOK 不能替代这些要求 |
 | 上下文字段一直为空 | 确认已重载新版本、选中了正确会话，并让新请求正常结束；查看面板给出的可用性说明 |

@@ -197,9 +197,18 @@ test('a provider no-retry header prevents repeating a temporary failure', async 
   assert.equal(r.received.length, 1); assert.equal(r.logs.at(-1).retryStopped, 'provider_no_retry');
 });
 
-test('the total retry scheduling budget includes the failed request time', async () => {
-  const r = await probe(res => setTimeout(() => res.writeHead(503).end(), 45), { retry: { budgetMs: 20 } });
-  assert.equal(r.received.length, 1); assert.equal(r.logs.at(-1).retryStopped, 'retry_budget');
+test('a slow initial request still gets a fresh retry window', async () => {
+  const r = await probe((res, attempt) => attempt === 1
+    ? setTimeout(() => res.writeHead(503).end(), 90) : success(res), { retry: { budgetMs: 40 } });
+  assert.equal(r.received.length, 2); assert.equal(r.native.text, 'RETRY_OK');
+  assert.equal(r.logs.filter(log => log.event === 'chat-retry').length, 1);
+  assert.ok(r.records[0].durationMs >= 90);
+});
+
+test('the retry window includes later failed attempts and stops further scheduling', async () => {
+  const r = await probe((res, attempt) => attempt === 1
+    ? res.writeHead(503).end() : setTimeout(() => res.writeHead(503).end(), 90), { retry: { budgetMs: 40 } });
+  assert.equal(r.received.length, 2); assert.equal(r.logs.at(-1).retryStopped, 'retry_budget');
 });
 
 for (const cancelOnRetry of [true, 'disconnect']) {
@@ -223,8 +232,77 @@ test('temporary SSE errors and incomplete EOF before output retry with fresh att
   }
 });
 
+for (const type of ['response.failed', 'error']) {
+  test(type + ' upstream_error before output retries the same request and completes once', async () => {
+    const r = await probe((res, attempt) => {
+      if (attempt !== 1) return success(res);
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      const error = { code: 'upstream_error', message: secret };
+      res.end(event(type === 'response.failed' ? { type, response: { status: 'failed', error } } : { type, error }));
+    });
+    assert.equal(r.received.length, 2); assert.equal(new Set(r.received).size, 1);
+    assert.equal(r.native.text, 'RETRY_OK'); assert.deepEqual(r.native.stops, [2]);
+    assert.equal(r.native.trailers, 1); assert.equal(r.native.ids.size, 1);
+    assert.equal(r.logs[0].providerErrorCode, 'upstream_error');
+    assert.equal(r.logs.at(-1).attempts, 2); assert.equal(r.records[0].status, 'success');
+  });
+}
+
+test('persistent upstream_error is bounded to four attempts without ACP continuation', async () => {
+  const r = await probe(res => {
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.end(event({ type: 'response.failed', response: { error: { code: 'upstream_error', message: secret } } }));
+  });
+  assert.equal(r.received.length, 4); assert.deepEqual(r.native.stops, [13]);
+  assert.match(r.native.text, /retry limit reached; 4 attempts/);
+  assert.equal(r.logs.at(-1).retryStopped, 'retry_limit');
+  assert.equal(matchesProviderError(r.native.text), false);
+});
+
+test('upstream_error wrapping a permanent provider error type still stops immediately', async () => {
+  for (const type of ['authentication_error', 'insufficient_quota', 'invalid_request_error']) {
+    const r = await probe(res => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.end(event({ type: 'response.failed', response: { error: { code: 'upstream_error', type, message: secret } } }));
+    });
+    assert.equal(r.received.length, 1); assert.equal(r.logs.at(-1).retryStopped, 'not_retryable');
+    assert.equal(r.logs.at(-1).providerErrorType, type);
+  }
+});
+
+test('HTTP upstream_error wrapping quota or request errors does not use temporary status to retry', async () => {
+  for (const [status, type] of [[429, 'insufficient_quota'], [500, 'invalid_request_error']]) {
+    const r = await probe(res => res.writeHead(status, { 'content-type': 'application/json' }).end(
+      JSON.stringify({ error: { code: 'upstream_error', type, message: secret } })));
+    assert.equal(r.received.length, 1); assert.equal(r.logs.at(-1).retryStopped, 'not_retryable');
+    assert.equal(r.logs.at(-1).providerErrorCode, 'upstream_error');
+    assert.equal(r.logs.at(-1).providerErrorType, type);
+  }
+});
+
+test('upstream_error after text or reasoning output never repeats the request', async () => {
+  for (const type of ['response.output_text.delta', 'response.reasoning_summary_text.delta']) {
+    const r = await probe(res => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.end(event({ type, output_index: 0, delta: 'Partial output.' }) +
+        event({ type: 'response.failed', response: { error: { code: 'upstream_error', message: secret } } }));
+    });
+    assert.equal(r.received.length, 1); assert.equal(r.logs.at(-1).retryStopped, 'output_started');
+    assert.equal(type.includes('reasoning') ? r.native.thinking : r.native.text.slice(0, 15), 'Partial output.');
+    assert.deepEqual(r.native.calls, []); assert.equal(r.native.signature, '');
+  }
+});
+
+test('upstream_error respects a provider no-retry header', async () => {
+  const r = await probe(res => {
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'x-should-retry': 'false' });
+    res.end(event({ type: 'error', error: { code: 'upstream_error', message: secret } }));
+  });
+  assert.equal(r.received.length, 1); assert.equal(r.logs.at(-1).retryStopped, 'provider_no_retry');
+});
+
 test('quota, auth, encrypted-state, parameter and unrecognized SSE failures do not retry', async () => {
-  for (const code of ['insufficient_quota', 'authentication_error', 'invalid_encrypted_content', 'invalid_parameter', 'upstream_error', secret]) {
+  for (const code of ['insufficient_quota', 'authentication_error', 'invalid_encrypted_content', 'invalid_parameter', secret]) {
     const r = await probe(res => {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       res.end(event({ type: 'response.failed', response: { error: { code, message: secret } } }));

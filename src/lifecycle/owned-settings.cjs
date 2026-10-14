@@ -6,6 +6,7 @@ const RECEIPT = 'settings-restore.json';
 const POINTERS = '.fusion-byok-storage.json';
 const ENV_KEYS = new Set(['WINDSURF_API_SERVER_URL', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
   'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'NODE_EXTRA_CA_CERTS', 'REQUESTS_CA_BUNDLE']);
+const PROXY_KEYS = new Set(['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy']);
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key);
 function valueAt(object, keys) {
   for (let index = 0; index < keys.length; index++) {
@@ -15,8 +16,10 @@ function valueAt(object, keys) {
   return { exists: true, value: object };
 }
 function permitted(keys) {
-  return Array.isArray(keys) && keys.length === 3 && keys[1] === 'devin-cli' &&
-    (keys[0] === 'devin.acp.agentEnv' && ENV_KEYS.has(keys[2]) || keys[0] === 'devin.acp.agentPreferences' && keys[2] === 'model');
+  return Array.isArray(keys) && keys.length === 3 &&
+    (keys[1] === 'devin-cli' &&
+      (keys[0] === 'devin.acp.agentEnv' && ENV_KEYS.has(keys[2]) || keys[0] === 'devin.acp.agentPreferences' && keys[2] === 'model') ||
+      keys[0] === 'devin.acp.agentEnv' && keys[1] === 'summary-agent' && PROXY_KEYS.has(keys[2]));
 }
 function matchesManaged(change, value) {
   if (value === change.managed) return true;
